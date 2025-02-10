@@ -10,7 +10,8 @@
 #define NEED_BROADCAST 0
 #define NEED_BATCH 0
 
-enum coro_bus_error_code {
+enum coro_bus_error_code
+{
 	CORO_BUS_ERR_NONE = 0,
 	CORO_BUS_ERR_NO_CHANNEL,
 	CORO_BUS_ERR_WOULD_BLOCK,
@@ -24,20 +25,17 @@ enum coro_bus_error_code
 coro_bus_errno(void);
 
 /** Set the global coro_bus error. */
-void
-coro_bus_errno_set(enum coro_bus_error_code err);
+void coro_bus_errno_set(enum coro_bus_error_code err);
 
 /** Create a new messaging bus with no channels in it. */
-struct coro_bus *
-coro_bus_new(void);
+struct coro_bus *coro_bus_new(void);
 
 /**
  * Destroy the bus and all its channels. The channels can not have
  * any suspended coroutines, but might have unconsumed data which
  * should be deleted too.
  */
-void
-coro_bus_delete(struct coro_bus *bus);
+void coro_bus_delete(struct coro_bus *bus);
 
 /**
  * Create a channel inside the bus.
@@ -48,8 +46,7 @@ coro_bus_delete(struct coro_bus *bus);
  * @retval >=0 Descriptor of the channel. It must be passed to the
  *     send/recv functions.
  */
-int
-coro_bus_channel_open(struct coro_bus *bus, size_t size_limit);
+int coro_bus_channel_open(struct coro_bus *bus, size_t size_limit);
 
 /**
  * Destroy the channel identified by the given descriptor. The
@@ -59,8 +56,7 @@ coro_bus_channel_open(struct coro_bus *bus, size_t size_limit);
  * @param bus Bus to destroy the channel in.
  * @param channel Descriptor of the channel to destroy.
  */
-void
-coro_bus_channel_close(struct coro_bus *bus, int channel);
+void coro_bus_channel_close(struct coro_bus *bus, int channel);
 
 /**
  * Send the given message to the specified channel. If the channel
@@ -74,8 +70,7 @@ coro_bus_channel_close(struct coro_bus *bus, int channel);
  * @retval -1 Error. Check coro_bus_errno() for reason.
  *     - CORO_BUS_ERR_NO_CHANNEL - the channel doesn't exist.
  */
-int
-coro_bus_send(struct coro_bus *bus, int channel, unsigned data);
+int coro_bus_send(struct coro_bus *bus, int channel, unsigned data);
 
 /**
  * Same as coro_bus_send(), but if the channel is full, the
@@ -90,8 +85,7 @@ coro_bus_send(struct coro_bus *bus, int channel, unsigned data);
  *     - CORO_BUS_ERR_NO_CHANNEL - the channel doesn't exist.
  *     - CORO_BUS_ERR_WOULD_BLOCK - the channel is full.
  */
-int
-coro_bus_try_send(struct coro_bus *bus, int channel, unsigned data);
+int coro_bus_try_send(struct coro_bus *bus, int channel, unsigned data);
 
 /**
  * Recv a message from the specified channel. If the channel is
@@ -106,8 +100,7 @@ coro_bus_try_send(struct coro_bus *bus, int channel, unsigned data);
  * @retval -1 Error. Check coro_bus_errno() for reason.
  *     - CORO_BUS_ERR_NO_CHANNEL - the channel doesn't exist.
  */
-int
-coro_bus_recv(struct coro_bus *bus, int channel, unsigned *data);
+int coro_bus_recv(struct coro_bus *bus, int channel, unsigned *data);
 
 /**
  * Same as coro_bus_recv(), but if the channel is empty, the
@@ -123,9 +116,7 @@ coro_bus_recv(struct coro_bus *bus, int channel, unsigned *data);
  *     - CORO_BUS_ERR_NO_CHANNEL - the channel doesn't exist.
  *     - CORO_BUS_ERR_WOULD_BLOCK - the channel is empty.
  */
-int
-coro_bus_try_recv(struct coro_bus *bus, int channel, unsigned *data);
-
+int coro_bus_try_recv(struct coro_bus *bus, int channel, unsigned *data);
 
 #if NEED_BROADCAST /* Bonus 1 */
 
@@ -141,8 +132,7 @@ coro_bus_try_recv(struct coro_bus *bus, int channel, unsigned *data);
  * @retval -1 Error. Check coro_bus_errno() for reason.
  *     - CORO_BUS_ERR_NO_CHANNEL - no channels in the bus.
  */
-int
-coro_bus_broadcast(struct coro_bus *bus, unsigned data);
+int coro_bus_broadcast(struct coro_bus *bus, unsigned data);
 
 /**
  * Same as coro_bus_broadcast(), but if any of the channels are
@@ -155,8 +145,7 @@ coro_bus_broadcast(struct coro_bus *bus, unsigned data);
  *     - CORO_BUS_ERR_NO_CHANNEL - no channels in the bus.
  *     - CORO_BUS_ERR_WOULD_BLOCK - at least one channel is full.
  */
-int
-coro_bus_try_broadcast(struct coro_bus *bus, unsigned data);
+int coro_bus_try_broadcast(struct coro_bus *bus, unsigned data);
 
 #endif /* Bonus 1 */
 
@@ -179,9 +168,8 @@ coro_bus_try_broadcast(struct coro_bus *bus, unsigned data);
  * @retval -1 Error. Check coro_bus_errno() for reason.
  *     - CORO_BUS_ERR_NO_CHANNEL - the channel doesn't exist.
  */
-int
-coro_bus_send_v(struct coro_bus *bus, int channel,
-	const unsigned *data, unsigned count);
+int coro_bus_send_v(struct coro_bus *bus, int channel,
+					const unsigned *data, unsigned count);
 
 /**
  * Same as coro_bus_send_v(), but fails instantly in case the
@@ -198,9 +186,8 @@ coro_bus_send_v(struct coro_bus *bus, int channel,
  *     - CORO_BUS_ERR_NO_CHANNEL - the channel doesn't exist.
  *     - CORO_BUS_ERR_WOULD_BLOCK - the channel is full.
  */
-int
-coro_bus_try_send_v(struct coro_bus *bus, int channel,
-	const unsigned *data, unsigned count);
+int coro_bus_try_send_v(struct coro_bus *bus, int channel,
+						const unsigned *data, unsigned count);
 
 /**
  * Same as coro_bus_recv(), but can receive multiple messages at
@@ -220,9 +207,8 @@ coro_bus_try_send_v(struct coro_bus *bus, int channel,
  * @retval -1 Error. Check coro_bus_errno() for reason.
  *     - CORO_BUS_ERR_NO_CHANNEL - the channel doesn't exist.
  */
-int
-coro_bus_recv_v(struct coro_bus *bus, int channel,
-	unsigned *data, unsigned capacity);
+int coro_bus_recv_v(struct coro_bus *bus, int channel,
+					unsigned *data, unsigned capacity);
 
 /**
  * Same as coro_bus_recv_v(), but fails instantly if the channel
@@ -240,8 +226,7 @@ coro_bus_recv_v(struct coro_bus *bus, int channel,
  *     - CORO_BUS_ERR_NO_CHANNEL - the channel doesn't exist.
  *     - CORO_BUS_ERR_WOULD_BLOCK - the channel is empty.
  */
-int
-coro_bus_try_recv_v(struct coro_bus *bus, int channel,
-	unsigned *data, unsigned capacity);
+int coro_bus_try_recv_v(struct coro_bus *bus, int channel,
+						unsigned *data, unsigned capacity);
 
 #endif /* Bonus 2 */

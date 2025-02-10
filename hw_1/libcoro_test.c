@@ -4,22 +4,19 @@
 
 ////////////////////////////////////////////////////////////////////////////////
 
-static void *
-test_suspend_and_return_f(void *arg)
+static void *test_suspend_and_return_f(void *arg)
 {
 	coro_suspend();
 	return arg;
 }
 
-static void *
-test_wakeup_f(void *arg)
+static void *test_wakeup_f(void *arg)
 {
 	coro_wakeup(arg);
 	return NULL;
 }
 
-static void
-test_suspend(void)
+static void test_suspend(void)
 {
 	unit_test_start();
 
@@ -34,18 +31,19 @@ test_suspend(void)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct test_loop_ctx {
+struct test_loop_ctx
+{
 	int id;
 	int yield_count;
 	int coro_count;
 	int *next_id;
 };
 
-static void *
-test_loop_coro_f(void *arg)
+static void *test_loop_coro_f(void *arg)
 {
 	struct test_loop_ctx *ctx = arg;
-	for (int i = 0; i < ctx->yield_count; ++i) {
+	for (int i = 0; i < ctx->yield_count; ++i)
+	{
 		unit_assert(*ctx->next_id == ctx->id);
 		*ctx->next_id = (*ctx->next_id + 1) % ctx->coro_count;
 		coro_yield();
@@ -53,8 +51,7 @@ test_loop_coro_f(void *arg)
 	return NULL;
 }
 
-static void
-test_loop_of_yields(void)
+static void test_loop_of_yields(void)
 {
 	unit_test_start();
 
@@ -80,13 +77,13 @@ test_loop_of_yields(void)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct test_wakeup_self_ctx {
+struct test_wakeup_self_ctx
+{
 	bool is_woken_up_externally;
 	bool is_suspended;
 };
 
-static void *
-test_wakeup_self_and_suspend_f(void *arg)
+static void *test_wakeup_self_and_suspend_f(void *arg)
 {
 	struct test_wakeup_self_ctx *ctx = arg;
 
@@ -103,8 +100,7 @@ test_wakeup_self_and_suspend_f(void *arg)
 	return NULL;
 }
 
-static void
-test_wakup_self(void)
+static void test_wakup_self(void)
 {
 	unit_test_start();
 
@@ -123,14 +119,12 @@ test_wakup_self(void)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-static void *
-test_join_f(void *arg)
+static void *test_join_f(void *arg)
 {
 	return coro_join(arg);
 }
 
-static void
-test_join_of_join(void)
+static void test_join_of_join(void)
 {
 	unit_test_start();
 
@@ -147,8 +141,7 @@ test_join_of_join(void)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-static void
-test_wakeup_of_finished(void)
+static void test_wakeup_of_finished(void)
 {
 	unit_test_start();
 
@@ -162,8 +155,7 @@ test_wakeup_of_finished(void)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-static void *
-coro_main_f(void *arg)
+static void *coro_main_f(void *arg)
 {
 	(void)arg;
 	test_suspend();
@@ -174,8 +166,7 @@ coro_main_f(void *arg)
 	return NULL;
 }
 
-int
-main(void)
+int main(void)
 {
 	coro_sched_init();
 	struct coro *main_coro = coro_new(coro_main_f, NULL);
