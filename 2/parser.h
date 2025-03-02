@@ -5,7 +5,8 @@
 
 struct parser;
 
-enum parser_error {
+enum parser_error
+{
 	PARSER_ERR_NONE,
 	PARSER_ERR_PIPE_WITH_NO_LEFT_ARG,
 	PARSER_ERR_PIPE_WITH_LEFT_ARG_NOT_A_COMMAND,
@@ -18,53 +19,55 @@ enum parser_error {
 	PARSER_ERR_ENDS_NOT_WITH_A_COMMAND,
 };
 
-struct command {
+struct command
+{
 	char *exe;
-	char** args;
+	char **args;
 	uint32_t arg_count;
 	uint32_t arg_capacity;
 };
 
-enum expr_type {
+enum expr_type
+{
 	EXPR_TYPE_COMMAND,
 	EXPR_TYPE_PIPE,
 	EXPR_TYPE_AND,
 	EXPR_TYPE_OR,
 };
 
-struct expr {
+struct expr
+{
 	enum expr_type type;
+
 	/** Valid if the type is COMMAND. */
 	struct command cmd;
 	struct expr *next;
 };
 
-enum output_type {
+enum output_type
+{
 	OUTPUT_TYPE_STDOUT,
 	OUTPUT_TYPE_FILE_NEW,
 	OUTPUT_TYPE_FILE_APPEND,
 };
 
-struct command_line {
+struct command_line
+{
 	struct expr *head;
 	struct expr *tail;
 	enum output_type out_type;
+
 	/** Valid if the out type is FILE. */
 	char *out_file;
 	bool is_background;
 };
 
-void
-command_line_delete(struct command_line *line);
+void command_line_delete(struct command_line *line);
 
-struct parser *
-parser_new(void);
+struct parser *parser_new(void);
 
-void
-parser_feed(struct parser *p, const char *str, uint32_t len);
+void parser_feed(struct parser *p, const char *str, uint32_t len);
 
-enum parser_error
-parser_pop_next(struct parser *p, struct command_line **out);
+enum parser_error parser_pop_next(struct parser *p, struct command_line **out);
 
-void
-parser_delete(struct parser *p);
+void parser_delete(struct parser *p);

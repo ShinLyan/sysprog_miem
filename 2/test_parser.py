@@ -74,4 +74,4 @@ def parse(filename):
         sections.append(current_section)
     if not sections:
         sys.exit('No tests found')
-    return sections
+    return sectionsGCC_FLAGS

@@ -4,8 +4,7 @@
 
 #include <string.h>
 
-static void
-test_one_word(void)
+static void test_one_word(void)
 {
 	unit_test_start();
 	struct parser *p = parser_new();
@@ -41,8 +40,7 @@ test_one_word(void)
 	unit_test_finish();
 }
 
-static void
-test_incomplete(void)
+static void test_incomplete(void)
 {
 	unit_test_start();
 	struct parser *p = parser_new();
@@ -69,8 +67,7 @@ test_incomplete(void)
 	unit_test_finish();
 }
 
-static void
-test_two_words(void)
+static void test_two_words(void)
 {
 	unit_test_start();
 	struct parser *p = parser_new();
@@ -78,7 +75,8 @@ test_two_words(void)
 
 	const char *str = "mkdir ../testdir";
 	uint32_t len = strlen(str);
-	for (uint32_t i = 0; i < len; ++i) {
+	for (uint32_t i = 0; i < len; ++i)
+	{
 		parser_feed(p, &str[i], 1);
 		unit_fail_if(parser_pop_next(p, &line) != PARSER_ERR_NONE);
 		unit_fail_if(line != NULL);
@@ -97,7 +95,8 @@ test_two_words(void)
 	unit_msg("Quoted argument");
 	str = "touch \"my file with whitespaces in name.txt\"";
 	len = strlen(str);
-	for (uint32_t i = 0; i < len; ++i) {
+	for (uint32_t i = 0; i < len; ++i)
+	{
 		parser_feed(p, &str[i], 1);
 		unit_fail_if(parser_pop_next(p, &line) != PARSER_ERR_NONE);
 		unit_fail_if(line != NULL);
@@ -109,7 +108,8 @@ test_two_words(void)
 	unit_check(strcmp(e->cmd.exe, "touch") == 0, "exe");
 	unit_check(e->cmd.arg_count == 1, "arg count");
 	unit_check(strcmp(e->cmd.args[0],
-		"my file with whitespaces in name.txt") == 0, "arg[0]");
+					  "my file with whitespaces in name.txt") == 0,
+			   "arg[0]");
 	unit_check(e->next == NULL, "no more exprs");
 	command_line_delete(line);
 
@@ -117,8 +117,7 @@ test_two_words(void)
 	unit_test_finish();
 }
 
-static void
-test_escape_in_string(void)
+static void test_escape_in_string(void)
 {
 	unit_test_start();
 	struct parser *p = parser_new();
@@ -127,7 +126,8 @@ test_escape_in_string(void)
 	/* echo '123 456 \" str \"' */
 	const char *str = "echo '123 >&| 456 \\\" str \\\"'";
 	uint32_t len = strlen(str);
-	for (uint32_t i = 0; i < len; ++i) {
+	for (uint32_t i = 0; i < len; ++i)
+	{
 		parser_feed(p, &str[i], 1);
 		unit_fail_if(parser_pop_next(p, &line) != PARSER_ERR_NONE);
 		unit_fail_if(line != NULL);
@@ -139,14 +139,16 @@ test_escape_in_string(void)
 	unit_check(strcmp(e->cmd.exe, "echo") == 0, "exe");
 	unit_check(e->cmd.arg_count == 1, "arg count");
 	unit_check(strcmp(e->cmd.args[0],
-		"123 >&| 456 \\\" str \\\"") == 0, "arg[0]");
+					  "123 >&| 456 \\\" str \\\"") == 0,
+			   "arg[0]");
 	unit_check(e->next == NULL, "no more exprs");
 	command_line_delete(line);
 
 	/* echo "test 'test'' \\" */
 	str = "echo \"test 'test'' \\\\\"";
 	len = strlen(str);
-	for (uint32_t i = 0; i < len; ++i) {
+	for (uint32_t i = 0; i < len; ++i)
+	{
 		parser_feed(p, &str[i], 1);
 		unit_fail_if(parser_pop_next(p, &line) != PARSER_ERR_NONE);
 		unit_fail_if(line != NULL);
@@ -170,12 +172,13 @@ test_escape_in_string(void)
 	 * f.close()\n" > test.py
 	 */
 	str = "printf \"import time\\n\\\n"
-		"time.sleep(0.1)\\n\\\n"
-		"f = open('test.txt', 'a')\\n\\\n"
-		"f.write('Text\\\\\\\\n')\\n\\\n"
-		"f.close()\\n\" > test.py";
+		  "time.sleep(0.1)\\n\\\n"
+		  "f = open('test.txt', 'a')\\n\\\n"
+		  "f.write('Text\\\\\\\\n')\\n\\\n"
+		  "f.close()\\n\" > test.py";
 	len = strlen(str);
-	for (uint32_t i = 0; i < len; ++i) {
+	for (uint32_t i = 0; i < len; ++i)
+	{
 		parser_feed(p, &str[i], 1);
 		unit_fail_if(parser_pop_next(p, &line) != PARSER_ERR_NONE);
 		unit_fail_if(line != NULL);
@@ -189,11 +192,12 @@ test_escape_in_string(void)
 	unit_check(strcmp(e->cmd.exe, "printf") == 0, "exe");
 	unit_check(e->cmd.arg_count == 1, "arg count");
 	unit_check(strcmp(e->cmd.args[0],
-		"import time\\n"
-		"time.sleep(0.1)\\n"
-		"f = open('test.txt', 'a')\\n"
-		"f.write('Text\\\\n')\\n"
-		"f.close()\\n") == 0, "arg[0]");
+					  "import time\\n"
+					  "time.sleep(0.1)\\n"
+					  "f = open('test.txt', 'a')\\n"
+					  "f.write('Text\\\\n')\\n"
+					  "f.close()\\n") == 0,
+			   "arg[0]");
 	unit_check(e->next == NULL, "no more exprs");
 	command_line_delete(line);
 
@@ -201,8 +205,7 @@ test_escape_in_string(void)
 	unit_test_finish();
 }
 
-static void
-test_output_redirect(void)
+static void test_output_redirect(void)
 {
 	unit_test_start();
 	struct parser *p = parser_new();
@@ -211,7 +214,8 @@ test_output_redirect(void)
 	/* echo '123 456 \" str \"' > "my file with whitespaces in name.txt" */
 	const char *str = "echo '123 456 \\\" str \\\"' > \"my file with whitespaces in name.txt\"";
 	uint32_t len = strlen(str);
-	for (uint32_t i = 0; i < len; ++i) {
+	for (uint32_t i = 0; i < len; ++i)
+	{
 		parser_feed(p, &str[i], 1);
 		unit_fail_if(parser_pop_next(p, &line) != PARSER_ERR_NONE);
 		unit_fail_if(line != NULL);
@@ -220,14 +224,16 @@ test_output_redirect(void)
 	unit_check(parser_pop_next(p, &line) == PARSER_ERR_NONE, "parse");
 	unit_check(line->out_type == OUTPUT_TYPE_FILE_NEW, "out type");
 	unit_check(strcmp(line->out_file,
-		"my file with whitespaces in name.txt") == 0, "out file");
+					  "my file with whitespaces in name.txt") == 0,
+			   "out file");
 	unit_check(!line->is_background, "not background");
 	struct expr *e = line->head;
 	unit_check(e->type == EXPR_TYPE_COMMAND, "expr type");
 	unit_check(strcmp(e->cmd.exe, "echo") == 0, "exe");
 	unit_check(e->cmd.arg_count == 1, "arg count");
 	unit_check(strcmp(e->cmd.args[0],
-		"123 456 \\\" str \\\"") == 0, "arg[0]");
+					  "123 456 \\\" str \\\"") == 0,
+			   "arg[0]");
 	unit_check(e->next == NULL, "no more exprs");
 	command_line_delete(line);
 
@@ -235,7 +241,8 @@ test_output_redirect(void)
 	/* echo "test" >> "my file with whitespaces in name.txt" */
 	str = "echo \"test\" >> \"my file with whitespaces in name.txt\"";
 	len = strlen(str);
-	for (uint32_t i = 0; i < len; ++i) {
+	for (uint32_t i = 0; i < len; ++i)
+	{
 		parser_feed(p, &str[i], 1);
 		unit_fail_if(parser_pop_next(p, &line) != PARSER_ERR_NONE);
 		unit_fail_if(line != NULL);
@@ -244,7 +251,8 @@ test_output_redirect(void)
 	unit_check(parser_pop_next(p, &line) == PARSER_ERR_NONE, "parse");
 	unit_check(line->out_type == OUTPUT_TYPE_FILE_APPEND, "out type");
 	unit_check(strcmp(line->out_file,
-		"my file with whitespaces in name.txt") == 0, "out file");
+					  "my file with whitespaces in name.txt") == 0,
+			   "out file");
 	unit_check(!line->is_background, "not background");
 	e = line->head;
 	unit_check(e->type == EXPR_TYPE_COMMAND, "expr type");
@@ -257,7 +265,8 @@ test_output_redirect(void)
 	unit_msg("No spaces");
 	str = "echo \"4\">file";
 	len = strlen(str);
-	for (uint32_t i = 0; i < len; ++i) {
+	for (uint32_t i = 0; i < len; ++i)
+	{
 		parser_feed(p, &str[i], 1);
 		unit_fail_if(parser_pop_next(p, &line) != PARSER_ERR_NONE);
 		unit_fail_if(line != NULL);
@@ -279,8 +288,7 @@ test_output_redirect(void)
 	unit_test_finish();
 }
 
-static void
-test_escape_outside_of_string(void)
+static void test_escape_outside_of_string(void)
 {
 	unit_test_start();
 	struct parser *p = parser_new();
@@ -289,7 +297,8 @@ test_escape_outside_of_string(void)
 	/* cat my\ file\ with\ whitespaces\ in\ name.txt */
 	const char *str = "cat my\\ file\\ with\\ whitespaces\\ in\\ name.txt";
 	uint32_t len = strlen(str);
-	for (uint32_t i = 0; i < len; ++i) {
+	for (uint32_t i = 0; i < len; ++i)
+	{
 		parser_feed(p, &str[i], 1);
 		unit_fail_if(parser_pop_next(p, &line) != PARSER_ERR_NONE);
 		unit_fail_if(line != NULL);
@@ -303,7 +312,8 @@ test_escape_outside_of_string(void)
 	unit_check(strcmp(e->cmd.exe, "cat") == 0, "exe");
 	unit_check(e->cmd.arg_count == 1, "arg count");
 	unit_check(strcmp(e->cmd.args[0],
-		"my file with whitespaces in name.txt") == 0, "arg[0]");
+					  "my file with whitespaces in name.txt") == 0,
+			   "arg[0]");
 	unit_check(e->next == NULL, "no more exprs");
 	command_line_delete(line);
 
@@ -314,7 +324,8 @@ test_escape_outside_of_string(void)
 	 */
 	str = "echo 123\\\n456";
 	len = strlen(str);
-	for (uint32_t i = 0; i < len; ++i) {
+	for (uint32_t i = 0; i < len; ++i)
+	{
 		parser_feed(p, &str[i], 1);
 		unit_fail_if(parser_pop_next(p, &line) != PARSER_ERR_NONE);
 		unit_fail_if(line != NULL);
@@ -338,7 +349,8 @@ test_escape_outside_of_string(void)
 	 */
 	str = "echo 123\\\n456\\\n| grep 2";
 	len = strlen(str);
-	for (uint32_t i = 0; i < len; ++i) {
+	for (uint32_t i = 0; i < len; ++i)
+	{
 		parser_feed(p, &str[i], 1);
 		unit_fail_if(parser_pop_next(p, &line) != PARSER_ERR_NONE);
 		unit_fail_if(line != NULL);
@@ -368,8 +380,7 @@ test_escape_outside_of_string(void)
 	unit_test_finish();
 }
 
-static void
-test_pipe(void)
+static void test_pipe(void)
 {
 	unit_test_start();
 	struct parser *p = parser_new();
@@ -377,7 +388,8 @@ test_pipe(void)
 
 	const char *str = "echo 100|grep 100";
 	uint32_t len = strlen(str);
-	for (uint32_t i = 0; i < len; ++i) {
+	for (uint32_t i = 0; i < len; ++i)
+	{
 		parser_feed(p, &str[i], 1);
 		unit_fail_if(parser_pop_next(p, &line) != PARSER_ERR_NONE);
 		unit_fail_if(line != NULL);
@@ -407,7 +419,8 @@ test_pipe(void)
 	unit_msg("Multiple pipes");
 	str = "echo 'source string' | sed 's/source/destination/g' | sed 's/string/value/g'";
 	len = strlen(str);
-	for (uint32_t i = 0; i < len; ++i) {
+	for (uint32_t i = 0; i < len; ++i)
+	{
 		parser_feed(p, &str[i], 1);
 		unit_fail_if(parser_pop_next(p, &line) != PARSER_ERR_NONE);
 		unit_fail_if(line != NULL);
@@ -430,7 +443,8 @@ test_pipe(void)
 	unit_check(strcmp(e->cmd.exe, "sed") == 0, "exe");
 	unit_check(e->cmd.arg_count == 1, "arg count");
 	unit_check(strcmp(e->cmd.args[0],
-		"s/source/destination/g") == 0, "arg[0]");
+					  "s/source/destination/g") == 0,
+			   "arg[0]");
 
 	e = e->next;
 	unit_check(e->type == EXPR_TYPE_PIPE, "expr type");
@@ -447,7 +461,8 @@ test_pipe(void)
 	unit_msg("Multiple args and pipes");
 	str = "yes bigdata | head -n 100000 | wc -l | tr -d [:blank:]";
 	len = strlen(str);
-	for (uint32_t i = 0; i < len; ++i) {
+	for (uint32_t i = 0; i < len; ++i)
+	{
 		parser_feed(p, &str[i], 1);
 		unit_fail_if(parser_pop_next(p, &line) != PARSER_ERR_NONE);
 		unit_fail_if(line != NULL);
@@ -498,8 +513,7 @@ test_pipe(void)
 	unit_test_finish();
 }
 
-static void
-test_comments(void)
+static void test_comments(void)
 {
 	unit_test_start();
 	struct parser *p = parser_new();
@@ -507,7 +521,8 @@ test_comments(void)
 
 	const char *str = "echo 100 # comment ' ' \\ \\";
 	uint32_t len = strlen(str);
-	for (uint32_t i = 0; i < len; ++i) {
+	for (uint32_t i = 0; i < len; ++i)
+	{
 		parser_feed(p, &str[i], 1);
 		unit_fail_if(parser_pop_next(p, &line) != PARSER_ERR_NONE);
 		unit_fail_if(line != NULL);
@@ -526,7 +541,8 @@ test_comments(void)
 
 	str = " # empty line, only comment";
 	len = strlen(str);
-	for (uint32_t i = 0; i < len; ++i) {
+	for (uint32_t i = 0; i < len; ++i)
+	{
 		parser_feed(p, &str[i], 1);
 		unit_fail_if(parser_pop_next(p, &line) != PARSER_ERR_NONE);
 		unit_fail_if(line != NULL);
@@ -537,7 +553,8 @@ test_comments(void)
 
 	str = "grep 300 400 # comm";
 	len = strlen(str);
-	for (uint32_t i = 0; i < len; ++i) {
+	for (uint32_t i = 0; i < len; ++i)
+	{
 		parser_feed(p, &str[i], 1);
 		unit_fail_if(parser_pop_next(p, &line) != PARSER_ERR_NONE);
 		unit_fail_if(line != NULL);
@@ -559,8 +576,7 @@ test_comments(void)
 	unit_test_finish();
 }
 
-static void
-test_multiline_string(void)
+static void test_multiline_string(void)
 {
 	unit_test_start();
 	struct parser *p = parser_new();
@@ -574,7 +590,8 @@ test_multiline_string(void)
 	 */
 	const char *str = "echo \"123\n456\n7\n\" | grep 4";
 	uint32_t len = strlen(str);
-	for (uint32_t i = 0; i < len; ++i) {
+	for (uint32_t i = 0; i < len; ++i)
+	{
 		parser_feed(p, &str[i], 1);
 		unit_fail_if(parser_pop_next(p, &line) != PARSER_ERR_NONE);
 		unit_fail_if(line != NULL);
@@ -604,8 +621,7 @@ test_multiline_string(void)
 	unit_test_finish();
 }
 
-static void
-test_logical_operators(void)
+static void test_logical_operators(void)
 {
 	unit_test_start();
 	struct parser *p = parser_new();
@@ -613,7 +629,8 @@ test_logical_operators(void)
 
 	const char *str = "false && echo 123";
 	uint32_t len = strlen(str);
-	for (uint32_t i = 0; i < len; ++i) {
+	for (uint32_t i = 0; i < len; ++i)
+	{
 		parser_feed(p, &str[i], 1);
 		unit_fail_if(parser_pop_next(p, &line) != PARSER_ERR_NONE);
 		unit_fail_if(line != NULL);
@@ -641,7 +658,8 @@ test_logical_operators(void)
 	unit_msg("Multiple operators");
 	str = "true || false || true && echo 123";
 	len = strlen(str);
-	for (uint32_t i = 0; i < len; ++i) {
+	for (uint32_t i = 0; i < len; ++i)
+	{
 		parser_feed(p, &str[i], 1);
 		unit_fail_if(parser_pop_next(p, &line) != PARSER_ERR_NONE);
 		unit_fail_if(line != NULL);
@@ -685,7 +703,8 @@ test_logical_operators(void)
 	unit_msg("Logical operators and pipes");
 	str = "echo 100 | grep 1 && echo 200 | grep 2";
 	len = strlen(str);
-	for (uint32_t i = 0; i < len; ++i) {
+	for (uint32_t i = 0; i < len; ++i)
+	{
 		parser_feed(p, &str[i], 1);
 		unit_fail_if(parser_pop_next(p, &line) != PARSER_ERR_NONE);
 		unit_fail_if(line != NULL);
@@ -733,8 +752,7 @@ test_logical_operators(void)
 	unit_test_finish();
 }
 
-static void
-test_background(void)
+static void test_background(void)
 {
 	unit_test_start();
 	struct parser *p = parser_new();
@@ -742,7 +760,8 @@ test_background(void)
 
 	const char *str = "sleep 0.5 && echo 'back sleep is done' > test.txt &";
 	uint32_t len = strlen(str);
-	for (uint32_t i = 0; i < len; ++i) {
+	for (uint32_t i = 0; i < len; ++i)
+	{
 		parser_feed(p, &str[i], 1);
 		unit_fail_if(parser_pop_next(p, &line) != PARSER_ERR_NONE);
 		unit_fail_if(line != NULL);
@@ -773,12 +792,12 @@ test_background(void)
 	unit_test_finish();
 }
 
-static void
-test_error_one(struct parser *p, const char *expr, enum parser_error err)
+static void test_error_one(struct parser *p, const char *expr, enum parser_error err)
 {
 	struct command_line *line = NULL;
 	uint32_t len = strlen(expr);
-	for (uint32_t i = 0; i < len; ++i) {
+	for (uint32_t i = 0; i < len; ++i)
+	{
 		parser_feed(p, &expr[i], 1);
 		unit_fail_if(parser_pop_next(p, &line) != PARSER_ERR_NONE);
 		unit_fail_if(line != NULL);
@@ -789,8 +808,7 @@ test_error_one(struct parser *p, const char *expr, enum parser_error err)
 	unit_check(parser_pop_next(p, &line) == PARSER_ERR_NONE, "parse none");
 }
 
-static void
-test_errors(void)
+static void test_errors(void)
 {
 	unit_test_start();
 	struct parser *p = parser_new();
@@ -819,8 +837,7 @@ test_errors(void)
 	unit_test_finish();
 }
 
-int
-main(void)
+int main(void)
 {
 	test_one_word();
 	test_incomplete();
