@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 
@@ -9,10 +10,52 @@
 #define MAX_ARGS 100
 #define MAX_CMDS 10
 
+// Функция для обработки вывода в файл (>, >>)
+int handle_output_redirection(char *cmd, char **new_cmd, char **file, int *append)
+{
+    *append = 0;
+    *file = NULL;
+
+    char *out = strstr(cmd, ">>");
+    if (out)
+        *append = 1;
+    else
+        out = strstr(cmd, ">");
+
+    if (out)
+    {
+        *out = '\0'; // Обрезаем команду перед `>` или `>>`
+        *new_cmd = cmd;
+
+        out += (*append ? 2 : 1); // Пропускаем `>` или `>>`
+        while (*out == ' ')
+            out++; // Убираем пробелы
+
+        if (*out == '\0')
+        {
+            fprintf(stderr, "Ошибка: отсутствует имя файла для перенаправления.\n");
+            return -1;
+        }
+
+        *file = out;
+    }
+    else
+        *new_cmd = cmd;
+
+    return 0;
+}
+
+// Функция для выполнения одной команды с учетом `>` и `>>`
 void execute_single_command(char *cmd)
 {
     char *args[MAX_ARGS];
     int arg_count = 0;
+    char *file;
+    int append;
+
+    // Обрабатываем перенаправление вывода
+    if (handle_output_redirection(cmd, &cmd, &file, &append) == -1)
+        return;
 
     // Разбираем строку на аргументы
     char *token = strtok(cmd, " \t\n");
@@ -28,7 +71,6 @@ void execute_single_command(char *cmd)
 
     // Создаем дочерний процесс
     pid_t pid = fork();
-
     if (pid == -1)
     {
         perror("Ошибка при fork");
@@ -37,7 +79,19 @@ void execute_single_command(char *cmd)
 
     if (pid == 0)
     {
-        // Дочерний процесс: запускаем команду
+        // Если есть файл для вывода, перенаправляем stdout
+        if (file)
+        {
+            int fd = open(file, O_WRONLY | O_CREAT | (append ? O_APPEND : O_TRUNC), 0644);
+            if (fd == -1)
+            {
+                perror("Ошибка открытия файла");
+                exit(1);
+            }
+            dup2(fd, STDOUT_FILENO);
+            close(fd);
+        }
+
         if (execvp(args[0], args) == -1)
         {
             perror("Ошибка при exec");
@@ -45,12 +99,11 @@ void execute_single_command(char *cmd)
         }
     }
     else
-    {
         // Родительский процесс: ждем завершения команды
         waitpid(pid, NULL, 0);
-    }
 }
 
+// Функция для выполнения команд с пайпами и перенаправлением
 void execute_piped_commands(char *input)
 {
     char *cmds[MAX_CMDS];
