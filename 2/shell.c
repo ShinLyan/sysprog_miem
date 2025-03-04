@@ -1,3 +1,6 @@
+#include "shell.h"
+#include "parser.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -6,68 +9,36 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 
-#define MAX_INPUT_SIZE 1024
-#define MAX_ARGS 100
-#define MAX_CMDS 10
-
-// Функция для обработки вывода в файл (>, >>)
-int handle_output_redirection(char *cmd, char **new_cmd, char **file, int *append)
+// Функция для выполнения одной команды
+static void execute_single_command(const struct command_line *line)
 {
-    *append = 0;
-    *file = NULL;
-
-    char *out = strstr(cmd, ">>");
-    if (out)
-        *append = 1;
-    else
-        out = strstr(cmd, ">");
-
-    if (out)
-    {
-        *out = '\0'; // Обрезаем команду перед `>` или `>>`
-        *new_cmd = cmd;
-
-        out += (*append ? 2 : 1); // Пропускаем `>` или `>>`
-        while (*out == ' ')
-            out++; // Убираем пробелы
-
-        if (*out == '\0')
-        {
-            fprintf(stderr, "Ошибка: отсутствует имя файла для перенаправления.\n");
-            return -1;
-        }
-
-        *file = out;
-    }
-    else
-        *new_cmd = cmd;
-
-    return 0;
-}
-
-// Функция для выполнения одной команды с учетом `>` и `>>`
-void execute_single_command(char *cmd)
-{
-    char *args[MAX_ARGS];
-    int arg_count = 0;
-    char *file;
-    int append;
-
-    // Обрабатываем перенаправление вывода
-    if (handle_output_redirection(cmd, &cmd, &file, &append) == -1)
+    // Если пустая команда, ничего не делаем
+    if (!line || !line->head)
         return;
 
-    // Разбираем строку на аргументы
-    char *token = strtok(cmd, " \t\n");
-    while (token != NULL)
-    {
-        args[arg_count++] = token;
-        token = strtok(NULL, " \t\n");
-    }
-    args[arg_count] = NULL; // Завершаем список аргументов
-
-    if (arg_count == 0) // Пустой ввод
+    struct expr *cmd_expr = line->head;
+    if (cmd_expr->type != EXPR_TYPE_COMMAND)
         return;
+
+    struct command *cmd = &cmd_expr->cmd;
+    char *args[cmd->arg_count + 2];
+    args[0] = cmd->exe;
+    for (uint32_t i = 0; i < cmd->arg_count; i++)
+        args[i + 1] = cmd->args[i];
+    args[cmd->arg_count + 1] = NULL;
+
+    // Встроенная команда cd
+    if (strcmp(cmd->exe, "cd") == 0)
+    {
+        if (cmd->arg_count > 0)
+            if (chdir(cmd->args[0]) == -1)
+                perror("Ошибка при смене директории");
+        return;
+    }
+
+    // Встроенная команда exit
+    if (strcmp(cmd->exe, "exit") == 0)
+        exit(cmd->arg_count > 0 ? atoi(cmd->args[0]) : 0);
 
     // Создаем дочерний процесс
     pid_t pid = fork();
@@ -77,12 +48,14 @@ void execute_single_command(char *cmd)
         return;
     }
 
-    if (pid == 0)
+    if (pid == 0) // Дочерний процесс
     {
-        // Если есть файл для вывода, перенаправляем stdout
-        if (file)
+        // Перенаправление вывода в файл, если указано `> или >>`
+        if (line->out_file)
         {
-            int fd = open(file, O_WRONLY | O_CREAT | (append ? O_APPEND : O_TRUNC), 0644);
+            int flags = O_WRONLY | O_CREAT;
+            flags |= (line->out_type == OUTPUT_TYPE_FILE_APPEND) ? O_APPEND : O_TRUNC;
+            int fd = open(line->out_file, flags, 0644);
             if (fd == -1)
             {
                 perror("Ошибка открытия файла");
@@ -92,39 +65,48 @@ void execute_single_command(char *cmd)
             close(fd);
         }
 
-        if (execvp(args[0], args) == -1)
-        {
-            perror("Ошибка при exec");
-            exit(1);
-        }
+        execvp(args[0], args);
+        perror("Ошибка при exec");
+        exit(1);
     }
-    else
-        // Родительский процесс: ждем завершения команды
+    else // Родительский процесс
         waitpid(pid, NULL, 0);
 }
 
 // Функция для выполнения команд с пайпами и перенаправлением
-void execute_piped_commands(char *input)
+static void execute_piped_commands(const struct command_line *line)
 {
-    char *cmds[MAX_CMDS];
-    int cmd_count = 0;
+    // Подсчитываем количество пайпов
+    int num_pipes = 0;
+    for (struct expr *e = line->head; e; e = e->next)
+        if (e->type == EXPR_TYPE_PIPE)
+            num_pipes++;
 
-    // Разделяем строку по пайпам "|"
-    char *token = strtok(input, "|");
-    while (token != NULL)
+    int pipes[num_pipes][2];
+
+    struct expr *cmd_expr = line->head;
+    int i = 0, prev_fd = -1;
+    while (cmd_expr)
     {
-        cmds[cmd_count++] = token;
-        token = strtok(NULL, "|");
-    }
+        // Перебираем все команды, пропуская пайпы
+        if (cmd_expr->type == EXPR_TYPE_PIPE)
+        {
+            cmd_expr = cmd_expr->next;
+            continue;
+        }
 
-    int fd[2];       // Дескрипторы пайпа
-    int prev_fd = 0; // Предыдущий дескриптор чтения
+        // Создаём пайп
+        if (i < num_pipes)
+        {
+            if (pipe(pipes[i]) == -1)
+            {
+                perror("Ошибка при создании пайпа");
+                return;
+            }
+        }
 
-    for (int i = 0; i < cmd_count; i++)
-    {
-        pipe(fd);
+        // Создаём дочерний процесс
         pid_t pid = fork();
-
         if (pid == -1)
         {
             perror("Ошибка при fork");
@@ -133,58 +115,68 @@ void execute_piped_commands(char *input)
 
         if (pid == 0) // Дочерний процесс
         {
-            dup2(prev_fd, STDIN_FILENO); // Входные данные из предыдущей команды
-            if (i < cmd_count - 1)
+            if (prev_fd != -1) // Если не первая команда
             {
-                dup2(fd[1], STDOUT_FILENO); // Вывод в пайп
+                dup2(prev_fd, STDIN_FILENO);
+                close(prev_fd);
             }
 
-            close(fd[0]);                    // Закрываем неиспользуемый дескриптор
-            execute_single_command(cmds[i]); // Выполняем команду
+            if (i < num_pipes) // Если не последняя команда
+            {
+                dup2(pipes[i][1], STDOUT_FILENO);
+            }
+
+            // Закрываем ненужные дескрипторы
+            for (int j = 0; j < num_pipes; j++)
+            {
+                close(pipes[j][0]);
+                close(pipes[j][1]);
+            }
+
+            struct command_line temp_line;
+            temp_line.head = cmd_expr;
+            temp_line.tail = cmd_expr;
+            temp_line.out_file = NULL;
+            temp_line.out_type = OUTPUT_TYPE_STDOUT;
+            temp_line.is_background = 0;
+
+            execute_single_command(&temp_line);
             exit(0);
-        }
-        else // Родительский процесс
-        {
-            waitpid(pid, NULL, 0);
-            close(fd[1]);    // Закрываем запись в пайп
-            prev_fd = fd[0]; // Обновляем предыдущий дескриптор чтения
-        }
-    }
-}
-
-int main()
-{
-    char input[MAX_INPUT_SIZE];
-    while (1)
-    {
-        // Читаем ввод от пользователя
-        printf("> "); // Выводим приглашение терминала
-        if (fgets(input, sizeof(input), stdin) == NULL)
-        {
-            printf("\nВыход...\n");
-            break;
-        }
-
-        // Удаляем символ новой строки в конце ввода
-        input[strcspn(input, "\n")] = '\0';
-
-        // Проверка на команду "exit"
-        if (strcmp(input, "exit") == 0)
-        {
-            printf("Завершение shell...\n");
-            break;
-        }
-
-        // Проверяем, есть ли пайп
-        if (strchr(input, '|'))
-        {
-            execute_piped_commands(input);
         }
         else
         {
-            execute_single_command(input);
+            // Родительский процесс закрывает пайпы
+            if (prev_fd != -1)
+                close(prev_fd);
+
+            if (i < num_pipes)
+                close(pipes[i][1]);
+
+            prev_fd = pipes[i][0];
         }
+
+        cmd_expr = cmd_expr->next;
+        i++;
     }
 
-    return 0;
+    for (int j = 0; j < num_pipes; j++)
+    {
+        close(pipes[j][0]);
+        close(pipes[j][1]);
+    }
+
+    while (wait(NULL) > 0)
+        ;
+}
+
+void execute_command_line(const struct command_line *line)
+{
+    if (!line || !line->head)
+        return;
+
+    // Проверяем, есть ли пайп
+    if (line->head->next)
+        execute_piped_commands(line);
+    else
+        execute_single_command(line);
 }

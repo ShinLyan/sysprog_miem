@@ -1,64 +1,8 @@
 #include "parser.h"
+#include "shell.h"
 
-#include <assert.h>
 #include <stdio.h>
 #include <unistd.h>
-
-static void execute_command_line(const struct command_line *line)
-{
-	/* REPLACE THIS CODE WITH ACTUAL COMMAND EXECUTION */
-
-	assert(line != NULL);
-	printf("================================\n");
-	printf("Command line:\n");
-	printf("Is background: %d\n", (int)line->is_background);
-	printf("Output: ");
-	if (line->out_type == OUTPUT_TYPE_STDOUT)
-	{
-		printf("stdout\n");
-	}
-	else if (line->out_type == OUTPUT_TYPE_FILE_NEW)
-	{
-		printf("new file - \"%s\"\n", line->out_file);
-	}
-	else if (line->out_type == OUTPUT_TYPE_FILE_APPEND)
-	{
-		printf("append file - \"%s\"\n", line->out_file);
-	}
-	else
-	{
-		assert(false);
-	}
-	printf("Expressions:\n");
-	const struct expr *e = line->head;
-	while (e != NULL)
-	{
-		if (e->type == EXPR_TYPE_COMMAND)
-		{
-			printf("\tCommand: %s", e->cmd.exe);
-			for (uint32_t i = 0; i < e->cmd.arg_count; ++i)
-				printf(" %s", e->cmd.args[i]);
-			printf("\n");
-		}
-		else if (e->type == EXPR_TYPE_PIPE)
-		{
-			printf("\tPIPE\n");
-		}
-		else if (e->type == EXPR_TYPE_AND)
-		{
-			printf("\tAND\n");
-		}
-		else if (e->type == EXPR_TYPE_OR)
-		{
-			printf("\tOR\n");
-		}
-		else
-		{
-			assert(false);
-		}
-		e = e->next;
-	}
-}
 
 int main(void)
 {
