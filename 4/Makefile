@@ -9,3 +9,6 @@ test:
 # by a student.
 test_glob:
 	gcc $(GCC_FLAGS) *.c ../utils/unit.c -I ../utils -o test
+
+clean:
+	rm -rf test
