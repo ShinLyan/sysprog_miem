@@ -321,9 +321,26 @@ int thread_task_delete(struct thread_task *task)
 
 int thread_task_detach(struct thread_task *task)
 {
-	/* IMPLEMENT THIS FUNCTION */
-	(void)task;
-	return TPOOL_ERR_NOT_IMPLEMENTED;
+	pthread_mutex_lock(&task->mutex);
+
+	if (task->state == TASK_STATE_NEW)
+	{
+		pthread_mutex_unlock(&task->mutex);
+		return TPOOL_ERR_TASK_NOT_PUSHED;
+	}
+
+	if (task->state == TASK_STATE_FINISHED)
+	{
+		pthread_mutex_unlock(&task->mutex);
+		pthread_mutex_destroy(&task->mutex);
+		pthread_cond_destroy(&task->cond);
+		free(task);
+		return 0;
+	}
+
+	task->state = TASK_STATE_DETACHED;
+	pthread_mutex_unlock(&task->mutex);
+	return 0;
 }
 
 #endif
