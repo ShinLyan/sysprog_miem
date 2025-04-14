@@ -1,6 +1,10 @@
 #include "thread_pool.h"
+
 #include <pthread.h>
 #include <stdlib.h>
+#include <math.h>
+#include <time.h>
+#include <errno.h>
 
 /** Текущее состояние задачи.
  *
@@ -288,11 +292,40 @@ int thread_task_join(struct thread_task *task, void **result)
 
 int thread_task_timed_join(struct thread_task *task, double timeout, void **result)
 {
-	/* IMPLEMENT THIS FUNCTION */
-	(void)task;
-	(void)timeout;
-	(void)result;
-	return TPOOL_ERR_NOT_IMPLEMENTED;
+	if (task->state == TASK_STATE_NEW)
+		return TPOOL_ERR_TASK_NOT_PUSHED;
+
+	struct timespec timeout_ts;
+	clock_gettime(CLOCK_REALTIME, &timeout_ts);
+
+	time_t seconds = (time_t)timeout;
+	long nanoseconds = (long)((timeout - seconds) * 1e9);
+
+	timeout_ts.tv_sec += seconds;
+	timeout_ts.tv_nsec += nanoseconds;
+	if (timeout_ts.tv_nsec >= 1e9)
+	{
+		timeout_ts.tv_sec++;
+		timeout_ts.tv_nsec -= 1e9;
+	}
+
+	pthread_mutex_lock(&task->mutex);
+
+	while (task->state != TASK_STATE_FINISHED)
+	{
+		int wait_result = pthread_cond_timedwait(&task->cond, &task->mutex, &timeout_ts);
+		if (wait_result == ETIMEDOUT)
+		{
+			pthread_mutex_unlock(&task->mutex);
+			return TPOOL_ERR_TIMEOUT;
+		}
+	}
+
+	if (result)
+		*result = task->result;
+
+	pthread_mutex_unlock(&task->mutex);
+	return 0;
 }
 
 #endif

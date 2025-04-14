@@ -16,7 +16,7 @@
  * used by tests.
  */
 #define NEED_DETACH 1
-#define NEED_TIMED_JOIN 0
+#define NEED_TIMED_JOIN 1
 
 struct thread_pool;
 struct thread_task;
