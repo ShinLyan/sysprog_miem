@@ -2,7 +2,6 @@
 
 #include <pthread.h>
 #include <stdlib.h>
-#include <math.h>
 #include <time.h>
 #include <errno.h>
 
@@ -16,7 +15,6 @@ enum thread_task_state
 	TASK_STATE_IN_POOL,	 // задача была передана в пул и стоит в очереди
 	TASK_STATE_RUNNING,	 // задача сейчас выполняется рабочим потоком
 	TASK_STATE_FINISHED, // задача завершила выполнение, результат доступен
-	TASK_STATE_DETACHED, // задача была отсоединена и будет удалена автоматически
 };
 
 struct thread_task
@@ -29,6 +27,7 @@ struct thread_task
 	pthread_cond_t cond;   // Нужна, чтобы другие потоки могли ждать окончания задачи
 
 	enum thread_task_state state; // Текущее состояние задачи
+	bool detached;				  // Задача отсоединена и будет удалена автоматически
 
 	struct thread_task *next; // Указатель на следующую задачу в очереди (односвязный список)
 };
@@ -122,6 +121,14 @@ int thread_pool_delete(struct thread_pool *pool)
 	return 0;
 }
 
+/** Удаление задачи */
+static void thread_task_destroy(struct thread_task *task)
+{
+	pthread_mutex_destroy(&task->mutex);
+	pthread_cond_destroy(&task->cond);
+	free(task);
+}
+
 /** Рабочая функция потока, который обрабатывает задачи из пула.
  *
  * Выполняет задачи из очереди, пока пул не начнет завершение.
@@ -166,9 +173,10 @@ static void *worker_thread_function(void *thread_pool)
 
 		void *result = task->function(task->arg);
 
-		// Сохранить результат и завершить задачу
+		bool should_free = false;
+
 		pthread_mutex_lock(&task->mutex);
-		bool is_detached = (task->state == TASK_STATE_DETACHED);
+		should_free = task->detached;
 		task->result = result;
 		task->state = TASK_STATE_FINISHED;
 		pthread_cond_broadcast(&task->cond);
@@ -178,13 +186,8 @@ static void *worker_thread_function(void *thread_pool)
 		pool->idle_thread_count++;
 		pthread_mutex_unlock(&pool->queue_mutex);
 
-		// Если задача отсоединена — удалить её
-		if (is_detached)
-		{
-			pthread_mutex_destroy(&task->mutex);
-			pthread_cond_destroy(&task->cond);
-			free(task);
-		}
+		if (should_free)
+			thread_task_destroy(task);
 	}
 
 	return NULL;
@@ -245,6 +248,7 @@ int thread_task_new(struct thread_task **task, thread_task_f function, void *arg
 	new_task->result = NULL;
 	new_task->state = TASK_STATE_NEW;
 	new_task->next = NULL;
+	new_task->detached = false;
 
 	pthread_mutex_init(&new_task->mutex, NULL);
 	pthread_cond_init(&new_task->cond, NULL);
@@ -343,9 +347,7 @@ int thread_task_delete(struct thread_task *task)
 	}
 
 	pthread_mutex_unlock(&task->mutex);
-	pthread_mutex_destroy(&task->mutex);
-	pthread_cond_destroy(&task->cond);
-	free(task);
+	thread_task_destroy(task);
 
 	return 0;
 }
@@ -365,13 +367,11 @@ int thread_task_detach(struct thread_task *task)
 	if (task->state == TASK_STATE_FINISHED)
 	{
 		pthread_mutex_unlock(&task->mutex);
-		pthread_mutex_destroy(&task->mutex);
-		pthread_cond_destroy(&task->cond);
-		free(task);
+		thread_task_destroy(task);
 		return 0;
 	}
 
-	task->state = TASK_STATE_DETACHED;
+	task->detached = true;
 	pthread_mutex_unlock(&task->mutex);
 	return 0;
 }
