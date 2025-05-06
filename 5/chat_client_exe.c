@@ -9,10 +9,10 @@
 #include <string.h>
 #include <unistd.h>
 
-int
-main(int argc, char **argv)
+int main(int argc, char **argv)
 {
-	if (argc < 2) {
+	if (argc < 2)
+	{
 		printf("Expected an address to connect to\n");
 		return -1;
 	}
@@ -20,7 +20,8 @@ main(int argc, char **argv)
 	const char *name = argc >= 3 ? argv[2] : "anon";
 	struct chat_client *cli = chat_client_new(name);
 	int rc = chat_client_connect(cli, addr);
-	if (rc != 0) {
+	if (rc != 0)
+	{
 		printf("Couldn't connect: %d\n", rc);
 		chat_client_delete(cli);
 		return -1;
@@ -38,7 +39,8 @@ main(int argc, char **argv)
 
 	const int buf_size = 1024;
 	char buf[buf_size];
-	while (true) {
+	while (true)
+	{
 		/*
 		 * Find what events the client wants. 'IN' is needed always,
 		 * really. But 'OUT' is needed only when the client has data to
@@ -50,11 +52,13 @@ main(int argc, char **argv)
 			chat_events_to_poll_events(chat_client_get_events(cli));
 
 		int rc = poll(poll_fds, 2, -1);
-		if (rc < 0) {
+		if (rc < 0)
+		{
 			printf("Poll error: %d\n", errno);
 			break;
 		}
-		if (poll_input->revents != 0) {
+		if (poll_input->revents != 0)
+		{
 			/*
 			 * Standard input is signaled - consume some part of it.
 			 * If there is more, poll() will return again on a next
@@ -62,17 +66,20 @@ main(int argc, char **argv)
 			 */
 			poll_input->revents = 0;
 			rc = read(STDIN_FILENO, buf, buf_size - 1);
-			if (rc == 0) {
+			if (rc == 0)
+			{
 				printf("EOF - exiting\n");
 				break;
 			}
 			rc = chat_client_feed(cli, buf, rc);
-			if (rc != 0) {
+			if (rc != 0)
+			{
 				printf("Feed error: %d\n", rc);
 				break;
 			}
 		}
-		if (poll_client->revents != 0) {
+		if (poll_client->revents != 0)
+		{
 			/*
 			 * Some of the client's needed events are ready. Let it
 			 * handle them internally. Timeout is not needed here,
@@ -80,14 +87,16 @@ main(int argc, char **argv)
 			 */
 			poll_client->revents = 0;
 			rc = chat_client_update(cli, 0);
-			if (rc != 0 && rc != CHAT_ERR_TIMEOUT) {
+			if (rc != 0 && rc != CHAT_ERR_TIMEOUT)
+			{
 				printf("Update error: %d\n", rc);
 				break;
 			}
 		}
 		/* Flush all the pending messages to the standard output. */
 		struct chat_message *msg;
-		while ((msg = chat_client_pop_next(cli)) != NULL) {
+		while ((msg = chat_client_pop_next(cli)) != NULL)
+		{
 #if NEED_AUTHOR
 			printf("%s: %s\n", msg->author, msg->data);
 #else
