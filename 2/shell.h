@@ -2,4 +2,4 @@
 
 #include "parser.h"
 
-void execute_command_line(const struct command_line *line);
+int execute_command_line(const struct command_line *line, bool *need_exit);

@@ -10,6 +10,8 @@ int main(void)
 	char buf[buf_size];
 	int rc;
 	struct parser *p = parser_new();
+	int exit_code = 0;
+	bool need_exit = false;
 	while ((rc = read(STDIN_FILENO, buf, buf_size)) > 0)
 	{
 		parser_feed(p, buf, rc);
@@ -24,10 +26,15 @@ int main(void)
 				printf("Error: %d\n", (int)err);
 				continue;
 			}
-			execute_command_line(line);
+			exit_code = execute_command_line(line, &need_exit);
 			command_line_delete(line);
+			if (need_exit)
+			{
+				parser_delete(p);
+				return exit_code;
+			}
 		}
 	}
 	parser_delete(p);
-	return 0;
+	return exit_code;
 }
