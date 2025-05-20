@@ -4,51 +4,48 @@
 #include <unistd.h>
 #include <stdint.h>
 
-static void
-test_new(void)
+static void test_new(void)
 {
 	unit_test_start();
 
 	struct thread_pool *p;
 	unit_check(thread_pool_new(TPOOL_MAX_THREADS + 1, &p) ==
-		   TPOOL_ERR_INVALID_ARGUMENT, "too big thread count is "\
-		   "forbidden");
+				   TPOOL_ERR_INVALID_ARGUMENT,
+			   "too big thread count is "
+			   "forbidden");
 	unit_check(thread_pool_new(0, &p) == TPOOL_ERR_INVALID_ARGUMENT,
-		   "0 thread count is forbidden");
+			   "0 thread count is forbidden");
 	unit_check(thread_pool_new(-1, &p) == TPOOL_ERR_INVALID_ARGUMENT,
-		   "negative thread count is forbidden");
+			   "negative thread count is forbidden");
 
 	unit_check(thread_pool_new(1, &p) == 0, "1 max thread is allowed");
 	unit_check(thread_pool_thread_count(p) == 0,
-		   "0 active threads after creation");
+			   "0 active threads after creation");
 	unit_check(thread_pool_delete(p) == 0, "delete without tasks");
 
 	unit_check(thread_pool_new(TPOOL_MAX_THREADS, &p) == 0,
-		   "max thread count is allowed");
+			   "max thread count is allowed");
 	unit_check(thread_pool_thread_count(p) == 0,
-		   "0 active threads after creation");
+			   "0 active threads after creation");
 	unit_check(thread_pool_delete(p) == 0, "delete");
 
 	unit_test_finish();
 }
 
-static void *
-task_incr_f(void *arg)
+static void *task_incr_f(void *arg)
 {
 	__atomic_add_fetch((int *)arg, 1, __ATOMIC_RELAXED);
 	return arg;
 }
 
-static void *
-task_wait_for_f(void *arg)
+static void *task_wait_for_f(void *arg)
 {
-	while(__atomic_load_n((int *)arg, __ATOMIC_RELAXED) == 0)
+	while (__atomic_load_n((int *)arg, __ATOMIC_RELAXED) == 0)
 		usleep(100);
 	return arg;
 }
 
-static void
-test_push(void)
+static void test_push(void)
 {
 	unit_test_start();
 
@@ -61,18 +58,18 @@ test_push(void)
 	 * Can delete before push.
 	 */
 	unit_check(thread_task_new(&t, task_incr_f, &arg) == 0,
-		   "created new task");
+			   "created new task");
 	unit_check(thread_task_delete(t) == 0,
-		   "task can be deleted before push");
+			   "task can be deleted before push");
 	unit_fail_if(thread_task_new(&t, task_incr_f, &arg) != 0);
 	/*
 	 * Bad join or delete.
 	 */
 	unit_check(thread_task_join(t, &result) == TPOOL_ERR_TASK_NOT_PUSHED,
-		   "can't join a not pushed task");
+			   "can't join a not pushed task");
 	unit_check(thread_pool_push_task(p, t) == 0, "pushed");
 	unit_check(thread_task_delete(t) == TPOOL_ERR_TASK_IN_POOL,
-		   "can't delete before join");
+			   "can't delete before join");
 	/*
 	 * Normal push.
 	 */
@@ -91,7 +88,7 @@ test_push(void)
 	 */
 	arg = 0;
 	unit_check(thread_task_new(&t, task_incr_f, &arg) == 0,
-		   "created new task");
+			   "created new task");
 	unit_check(thread_pool_push_task(p, t) == 0, "push");
 	while (__atomic_load_n(&arg, __ATOMIC_RELAXED) != 1)
 		usleep(100);
@@ -103,13 +100,15 @@ test_push(void)
 	const int count = 1000;
 	struct thread_task **tasks = malloc(sizeof(*tasks) * count);
 	arg = 0;
-	for (int i = 0; i < count; ++i) {
+	for (int i = 0; i < count; ++i)
+	{
 		struct thread_task **tp = &tasks[i];
 		unit_fail_if(thread_task_new(tp, task_wait_for_f, &arg) != 0);
 		unit_fail_if(thread_pool_push_task(p, *tp) != 0);
 	}
 	__atomic_store_n(&arg, 1, __ATOMIC_RELAXED);
-	for (int i = 0; i < count; ++i) {
+	for (int i = 0; i < count; ++i)
+	{
 		t = tasks[i];
 		unit_fail_if(thread_task_join(t, &result) != 0);
 		unit_fail_if(result != &arg);
@@ -118,7 +117,8 @@ test_push(void)
 		else
 			unit_fail_if(thread_task_delete(t) != 0);
 	}
-	for (int i = 0; i < count; i += 2) {
+	for (int i = 0; i < count; i += 2)
+	{
 		t = tasks[i];
 		unit_fail_if(thread_task_join(t, &result) != 0);
 		unit_fail_if(result != &arg);
@@ -130,17 +130,15 @@ test_push(void)
 	unit_test_finish();
 }
 
-static void *
-task_lock_unlock_f(void *arg)
+static void *task_lock_unlock_f(void *arg)
 {
-	pthread_mutex_t *m = (pthread_mutex_t *) arg;
+	pthread_mutex_t *m = (pthread_mutex_t *)arg;
 	pthread_mutex_lock(m);
 	pthread_mutex_unlock(m);
 	return arg;
 }
 
-static void
-test_thread_pool_delete(void)
+static void test_thread_pool_delete(void)
 {
 	unit_test_start();
 
@@ -159,8 +157,8 @@ test_thread_pool_delete(void)
 	unit_fail_if(thread_pool_push_task(p, t) != 0);
 	/* Give the task a chance to be picked up by a thread. */
 	usleep(1000);
-	unit_check(thread_pool_delete(p) == TPOOL_ERR_HAS_TASKS, "delete does "\
-		   "not work until there are not finished tasks");
+	unit_check(thread_pool_delete(p) == TPOOL_ERR_HAS_TASKS, "delete does "
+															 "not work until there are not finished tasks");
 	pthread_mutex_unlock(&m);
 	unit_fail_if(thread_task_join(t, &result) != 0);
 	unit_fail_if(thread_task_delete(t) != 0);
@@ -171,17 +169,18 @@ test_thread_pool_delete(void)
 	unit_test_finish();
 }
 
-static void
-map_reduce_inc(struct thread_pool *p, struct thread_task **tasks, int count,
-	       int *arg)
+static void map_reduce_inc(
+	struct thread_pool *p, struct thread_task **tasks, int count, int *arg)
 {
 	void *result;
-	for (int i = 0; i < count; ++i) {
+	for (int i = 0; i < count; ++i)
+	{
 		struct thread_task **t = &tasks[i];
 		unit_fail_if(thread_task_new(t, task_incr_f, arg) != 0);
 		unit_fail_if(thread_pool_push_task(p, *t) != 0);
 	}
-	for (int i = 0; i < count; ++i) {
+	for (int i = 0; i < count; ++i)
+	{
 		struct thread_task *t = tasks[i];
 		unit_fail_if(thread_task_join(t, &result) != 0);
 		unit_fail_if(thread_task_delete(t) != 0);
@@ -189,8 +188,7 @@ map_reduce_inc(struct thread_pool *p, struct thread_task **tasks, int count,
 	}
 }
 
-static void
-test_thread_pool_max_tasks(void)
+static void test_thread_pool_max_tasks(void)
 {
 	unit_test_start();
 
@@ -216,7 +214,8 @@ test_thread_pool_max_tasks(void)
 	 * Count > max gives an error.
 	 */
 	arg = 0;
-	for (int i = 0; i < TPOOL_MAX_TASKS; ++i) {
+	for (int i = 0; i < TPOOL_MAX_TASKS; ++i)
+	{
 		struct thread_task **t = &tasks[i];
 		unit_fail_if(thread_task_new(t, task_wait_for_f, &arg) != 0);
 		unit_fail_if(thread_pool_push_task(p, *t) != 0);
@@ -226,11 +225,13 @@ test_thread_pool_max_tasks(void)
 	 * in-progress. From certain point of view it might be fair.
 	 */
 	int overuse = 0;
-	for (int i = TPOOL_MAX_TASKS; i < total_count; ++i) {
+	for (int i = TPOOL_MAX_TASKS; i < total_count; ++i)
+	{
 		struct thread_task **t = &tasks[i];
 		unit_fail_if(thread_task_new(t, task_wait_for_f, &arg) != 0);
 		int rc = thread_pool_push_task(p, *t);
-		if (rc == 0) {
+		if (rc == 0)
+		{
 			++overuse;
 			continue;
 		}
@@ -240,7 +241,8 @@ test_thread_pool_max_tasks(void)
 	}
 	unit_check(overuse < more_count, "reached max tasks");
 	__atomic_store_n(&arg, 1, __ATOMIC_RELAXED);
-	for (int i = 0; i < TPOOL_MAX_TASKS + overuse; ++i) {
+	for (int i = 0; i < TPOOL_MAX_TASKS + overuse; ++i)
+	{
 		void *result;
 		struct thread_task *t = tasks[i];
 		unit_fail_if(thread_task_join(t, &result) != 0);
@@ -253,9 +255,7 @@ test_thread_pool_max_tasks(void)
 	unit_test_finish();
 }
 
-
-static void
-test_timed_join(void)
+static void test_timed_join(void)
 {
 #if NEED_TIMED_JOIN
 	unit_test_start();
@@ -268,24 +268,27 @@ test_timed_join(void)
 	unit_fail_if(thread_task_new(&task, task_wait_for_f, &arg) != 0);
 	unit_fail_if(thread_pool_push_task(p, task) != 0);
 	unit_check(thread_task_timed_join(task, 0, &result) ==
-		TPOOL_ERR_TIMEOUT, "timed out on 0");
+				   TPOOL_ERR_TIMEOUT,
+			   "timed out on 0");
 
 	struct timespec ts1, ts2;
 	clock_gettime(CLOCK_MONOTONIC, &ts1);
 	unit_check(thread_task_timed_join(task, 0.1, &result) ==
-		TPOOL_ERR_TIMEOUT, "timeout out on 100 ms");
+				   TPOOL_ERR_TIMEOUT,
+			   "timeout out on 100 ms");
 	clock_gettime(CLOCK_MONOTONIC, &ts2);
 	uint64_t ns1 = ts1.tv_sec * 1000000000 + ts1.tv_nsec;
 	uint64_t ns2 = ts2.tv_sec * 1000000000 + ts2.tv_nsec;
 	unit_check(ns2 - ns1 > 100000000, "didn't exit too early");
 
 	unit_check(thread_task_timed_join(task, -10000, &result) ==
-		TPOOL_ERR_TIMEOUT, "timeout out on negative timeout");
+				   TPOOL_ERR_TIMEOUT,
+			   "timeout out on negative timeout");
 
 	clock_gettime(CLOCK_MONOTONIC, &ts1);
 	__atomic_store_n(&arg, 1, __ATOMIC_RELAXED);
 	unit_check(thread_task_timed_join(task, 1, &result) == 0,
-		"joined with 1 sec timeout");
+			   "joined with 1 sec timeout");
 	clock_gettime(CLOCK_MONOTONIC, &ts2);
 	ns1 = ts1.tv_sec * 1000000000 + ts1.tv_nsec;
 	ns2 = ts2.tv_sec * 1000000000 + ts2.tv_nsec;
@@ -299,8 +302,7 @@ test_timed_join(void)
 #endif
 }
 
-static void
-test_detach_stress(void)
+static void test_detach_stress(void)
 {
 #if NEED_DETACH
 	unit_test_start();
@@ -314,7 +316,8 @@ test_detach_stress(void)
 	 * deletion needs to be checked with a sanitizer like heap_help.
 	 */
 	unit_check(true, "detach pushed tasks");
-	for (int i = 0; i < 1000; ++i) {
+	for (int i = 0; i < 1000; ++i)
+	{
 		unit_fail_if(thread_task_new(&task, task_incr_f, &arg) != 0);
 		unit_fail_if(thread_pool_push_task(p, task) != 0);
 		if (thread_task_detach(task) != 0)
@@ -327,7 +330,7 @@ test_detach_stress(void)
 	 */
 	unit_fail_if(thread_task_new(&task, task_incr_f, &arg) != 0);
 	unit_check(thread_task_detach(task) == TPOOL_ERR_TASK_NOT_PUSHED,
-		   "detach non-pushed task");
+			   "detach non-pushed task");
 	unit_fail_if(thread_task_delete(task) != 0);
 	// Might be unable to delete the pool right away - the task needs time
 	// to complete.
@@ -338,8 +341,7 @@ test_detach_stress(void)
 #endif
 }
 
-static void
-test_detach_long(void)
+static void test_detach_long(void)
 {
 #if NEED_DETACH
 	unit_test_start();
@@ -363,10 +365,10 @@ test_detach_long(void)
 #endif
 }
 
-int
-main(int argc, char **argv)
+int main(int argc, char **argv)
 {
-	if (doCmdMaxPoints(argc, argv)) {
+	if (doCmdMaxPoints(argc, argv))
+	{
 		int result = 15;
 #if NEED_DETACH
 		result += 5;
