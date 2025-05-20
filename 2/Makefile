@@ -12,7 +12,7 @@ test_glob:
 clean:
 	rm -rf $(EXE) "__pycache__" "testdir"
 
-test:
+test: clean all
 	python3 checker.py -e $(EXE)
 
 .PHONY: all test_glob clean test
