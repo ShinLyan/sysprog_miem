@@ -11,62 +11,165 @@
 
 #define MAX_CHILD_PROCESSES 1024
 
-static void reap_finished_background_processes(void);
-static int execute_pipeline(const struct command_line *line);
-static void redirect_pipes(int input_fd, int output_fd);
+static void reap_background_processes();
+int execute_command_block(const struct command_line *line, struct expr **expr_ptr, bool *need_exit);
+static bool run_builtin_command(const struct command *command, bool *need_exit, int *exit_code);
+static bool command_block_has_pipe(const struct expr *start, const struct expr *end);
+static int run_pipeline(const struct command_line *line);
+static void redirect_io(int input_fd, int output_fd);
 static void close_unused_pipes(int input_fd, int is_last, int pipe_fds[2]);
-static int execute_single_command(const struct command_line *line, bool *need_exit);
-static int handle_builtin_commands(const struct command *cmd, bool *need_exit);
+static int run_single_command(const struct command_line *line, bool *need_exit);
 static void apply_output_redirection(const struct command_line *line);
+static int wait_for_processes(pid_t *process_ids, int process_count, pid_t last_process_id);
 
 int execute_command_line(const struct command_line *line, bool *need_exit)
 {
-    reap_finished_background_processes();
+    reap_background_processes();
 
-    if (!line || !line->head)
-        return 0;
+    int last_exit_code = 0;
+    struct expr *expr = line->head;
 
-    return line->head->next
-               ? execute_pipeline(line)
-               : execute_single_command(line, need_exit);
+    while (expr)
+    {
+        last_exit_code = execute_command_block(line, &expr, need_exit);
+        if (*need_exit)
+            return last_exit_code;
+
+        if (!expr)
+            break;
+
+        if (expr->type == EXPR_TYPE_AND)
+        {
+            if (last_exit_code != 0)
+            {
+                do
+                    expr = expr->next;
+                while (expr && expr->type != EXPR_TYPE_OR && expr->type != EXPR_TYPE_AND);
+            }
+            expr = expr ? expr->next : NULL;
+            continue;
+        }
+
+        if (expr->type == EXPR_TYPE_OR)
+        {
+            if (last_exit_code == 0)
+            {
+                do
+                    expr = expr->next;
+                while (expr && expr->type != EXPR_TYPE_OR && expr->type != EXPR_TYPE_AND);
+            }
+            expr = expr ? expr->next : NULL;
+            continue;
+        }
+    }
+
+    return last_exit_code;
 }
 
-static void reap_finished_background_processes(void)
+static void reap_background_processes()
 {
     int status;
     while (waitpid(-1, &status, WNOHANG) > 0)
         ;
 }
 
-static int execute_pipeline(const struct command_line *line)
+int execute_command_block(const struct command_line *line, struct expr **expr_ptr, bool *need_exit)
 {
-    struct expr *current_expression = line->head;
-    int previous_pipe_read_end = -1;
-    int pipe_fd[2];
-    pid_t child_pids[MAX_CHILD_PROCESSES];
-    int child_count = 0;
-    int last_exit_code = 0;
+    struct expr *start = *expr_ptr;
+    struct expr *end = start;
 
-    while (current_expression)
+    while (end->next)
     {
-        if (current_expression->type == EXPR_TYPE_PIPE)
+        enum expr_type type = end->next->type;
+        if (type == EXPR_TYPE_COMMAND || type == EXPR_TYPE_PIPE)
+            end = end->next;
+        else
+            break;
+    }
+
+    if (start == end && start->type == EXPR_TYPE_COMMAND)
+    {
+        int builtin_exit_code = 0;
+        if (run_builtin_command(&start->cmd, need_exit, &builtin_exit_code))
         {
-            current_expression = current_expression->next;
+            *expr_ptr = end->next;
+            return builtin_exit_code;
+        }
+    }
+
+    struct command_line command_block = {
+        .head = start,
+        .tail = end,
+        .out_file = line->out_file,
+        .out_type = line->out_type,
+        .is_background = line->is_background,
+    };
+
+    int exit_code = command_block_has_pipe(start, end)
+                        ? run_pipeline(&command_block)
+                        : run_single_command(&command_block, need_exit);
+
+    *expr_ptr = end->next;
+    return exit_code;
+}
+
+static bool run_builtin_command(const struct command *command, bool *need_exit, int *exit_code)
+{
+    if (strcmp(command->exe, "cd") == 0)
+    {
+        if (command->arg_count > 0 && chdir(command->args[0]) == -1)
+            perror("chdir");
+        *exit_code = 0;
+        return true;
+    }
+
+    if (strcmp(command->exe, "exit") == 0)
+    {
+        *need_exit = true;
+        *exit_code = command->arg_count > 0 ? atoi(command->args[0]) : 0;
+        return true;
+    }
+
+    return false;
+}
+
+static bool command_block_has_pipe(const struct expr *start, const struct expr *end)
+{
+    for (const struct expr *expr = start; expr && expr != end->next; expr = expr->next)
+        if (expr->type == EXPR_TYPE_PIPE)
+            return true;
+
+    return false;
+}
+
+static int run_pipeline(const struct command_line *line)
+{
+    struct expr *current_expr = line->head;
+    int pipe_fds[2];
+    int input_fd = -1;
+    pid_t process_ids[MAX_CHILD_PROCESSES];
+    pid_t last_process_id = -1;
+    int process_count = 0;
+
+    while (current_expr && current_expr != line->tail->next)
+    {
+        if (current_expr->type == EXPR_TYPE_PIPE)
+        {
+            current_expr = current_expr->next;
             continue;
         }
 
-        int is_last_command = !(current_expression->next && current_expression->next->type == EXPR_TYPE_PIPE);
-        int input_fd = previous_pipe_read_end;
+        int is_last = !(current_expr->next && current_expr->next->type == EXPR_TYPE_PIPE);
         int output_fd = STDOUT_FILENO;
 
-        if (!is_last_command && pipe(pipe_fd) == -1)
+        if (!is_last && pipe(pipe_fds) == -1)
         {
             perror("pipe");
-            exit(1);
+            exit(EXIT_FAILURE);
         }
 
-        if (!is_last_command)
-            output_fd = pipe_fd[1];
+        if (!is_last)
+            output_fd = pipe_fds[1];
 
         pid_t child_pid = fork();
         if (child_pid == -1)
@@ -77,57 +180,51 @@ static int execute_pipeline(const struct command_line *line)
 
         if (child_pid == 0)
         {
-            redirect_pipes(input_fd, output_fd);
-            close_unused_pipes(input_fd, is_last_command, pipe_fd);
+            redirect_io(input_fd, output_fd);
+            close_unused_pipes(input_fd, is_last, pipe_fds);
 
             struct command_line single_command = {
-                .head = current_expression,
-                .tail = current_expression,
-                .out_file = is_last_command ? line->out_file : NULL,
-                .out_type = is_last_command ? line->out_type : OUTPUT_TYPE_STDOUT,
+                .head = current_expr,
+                .tail = current_expr,
+                .out_file = is_last ? line->out_file : NULL,
+                .out_type = is_last ? line->out_type : OUTPUT_TYPE_STDOUT,
                 .is_background = 0};
 
             bool exit_flag = false;
-            int code = execute_single_command(&single_command, &exit_flag);
+            int code = run_single_command(&single_command, &exit_flag);
             _exit(code);
         }
 
-        if (child_count < MAX_CHILD_PROCESSES)
-            child_pids[child_count++] = child_pid;
+        if (process_count < MAX_CHILD_PROCESSES)
+            process_ids[process_count++] = child_pid;
+
+        if (is_last)
+            last_process_id = child_pid;
 
         if (input_fd != -1)
             close(input_fd);
 
-        if (!is_last_command)
-            close(pipe_fd[1]);
+        if (!is_last)
+            close(pipe_fds[1]);
 
-        previous_pipe_read_end = is_last_command ? -1 : pipe_fd[0];
-        current_expression = current_expression->next;
+        input_fd = is_last ? -1 : pipe_fds[0];
+        current_expr = current_expr->next;
     }
 
-    if (previous_pipe_read_end != -1)
-        close(previous_pipe_read_end);
+    if (input_fd != -1)
+        close(input_fd);
 
-    if (!line->is_background)
-    {
-        for (int i = 0; i < child_count; i++)
-        {
-            int status;
-            waitpid(child_pids[i], &status, 0);
-            if (i == child_count - 1 && WIFEXITED(status))
-                last_exit_code = WEXITSTATUS(status);
-        }
-    }
-
-    return last_exit_code;
+    return line->is_background
+               ? 0
+               : wait_for_processes(process_ids, process_count, last_process_id);
 }
 
-static void redirect_pipes(int input_fd, int output_fd)
+static void redirect_io(int input_fd, int output_fd)
 {
-    if (input_fd != STDIN_FILENO)
+    if (input_fd != STDIN_FILENO && input_fd != -1)
         dup2(input_fd, STDIN_FILENO);
 
-    if (output_fd != STDOUT_FILENO)
+    if (output_fd != STDOUT_FILENO && output_fd != -1)
         dup2(output_fd, STDOUT_FILENO);
 }
 
@@ -143,15 +240,16 @@ static void close_unused_pipes(int input_fd, int is_last, int pipe_fds[2])
     }
 }
 
-static int execute_single_command(const struct command_line *line, bool *need_exit)
+static int run_single_command(const struct command_line *line, bool *need_exit)
 {
     if (!line || !line->head || line->head->type != EXPR_TYPE_COMMAND)
         return 0;
 
     struct command *command = &line->head->cmd;
 
-    if (handle_builtin_commands(command, need_exit))
-        return command->arg_count > 0 ? atoi(command->args[0]) : 0;
+    int builtin_exit_code = 0;
+    if (run_builtin_command(command, need_exit, &builtin_exit_code))
+        return builtin_exit_code;
 
     char *args[command->arg_count + 2];
     args[0] = command->exe;
@@ -181,26 +279,8 @@ static int execute_single_command(const struct command_line *line, bool *need_ex
 
     int status;
     waitpid(pid, &status, 0);
+
     return WIFEXITED(status) ? WEXITSTATUS(status) : 1;
-}
-
-static int handle_builtin_commands(const struct command *cmd, bool *need_exit)
-{
-    if (strcmp(cmd->exe, "cd") == 0)
-    {
-        if (cmd->arg_count > 0 && chdir(cmd->args[0]) == -1)
-            perror("chdir");
-
-        return 1;
-    }
-
-    if (strcmp(cmd->exe, "exit") == 0)
-    {
-        *need_exit = true;
-        return 1;
-    }
-
-    return 0;
 }
 
 static void apply_output_redirection(const struct command_line *line)
@@ -219,4 +299,18 @@ static void apply_output_redirection(const struct command_line *line)
 
     dup2(fd, STDOUT_FILENO);
     close(fd);
+}
+
+static int wait_for_processes(pid_t *process_ids, int process_count, pid_t last_process_id)
+{
+    int status;
+    int exit_code = 0;
+    if (last_process_id != -1 && waitpid(last_process_id, &status, 0) > 0 && WIFEXITED(status))
+        exit_code = WEXITSTATUS(status);
+
+    for (int i = 0; i < process_count; ++i)
+        if (process_ids[i] != last_process_id)
+            waitpid(process_ids[i], NULL, 0);
+
+    return exit_code;
 }
