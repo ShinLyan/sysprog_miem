@@ -13,6 +13,6 @@ clean:
 	rm -rf $(EXE) "__pycache__" "testdir"
 
 test: clean all
-	python3 checker.py -e $(EXE)
+	python3 checker.py -e $(EXE) --with_background True
 
 .PHONY: all test_glob clean test

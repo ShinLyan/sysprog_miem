@@ -11,6 +11,7 @@
 
 #define MAX_CHILD_PROCESSES 1024
 
+static void reap_finished_background_processes(void);
 static int execute_pipeline(const struct command_line *line);
 static void redirect_pipes(int input_fd, int output_fd);
 static void close_unused_pipes(int input_fd, int is_last, int pipe_fds[2]);
@@ -20,12 +21,21 @@ static void apply_output_redirection(const struct command_line *line);
 
 int execute_command_line(const struct command_line *line, bool *need_exit)
 {
+    reap_finished_background_processes();
+
     if (!line || !line->head)
         return 0;
 
     return line->head->next
                ? execute_pipeline(line)
                : execute_single_command(line, need_exit);
+}
+
+static void reap_finished_background_processes(void)
+{
+    int status;
+    while (waitpid(-1, &status, WNOHANG) > 0)
+        ;
 }
 
 static int execute_pipeline(const struct command_line *line)
@@ -98,12 +108,15 @@ static int execute_pipeline(const struct command_line *line)
     if (previous_pipe_read_end != -1)
         close(previous_pipe_read_end);
 
-    for (int i = 0; i < child_count; i++)
+    if (!line->is_background)
     {
-        int status;
-        waitpid(child_pids[i], &status, 0);
-        if (i == child_count - 1 && WIFEXITED(status))
-            last_exit_code = WEXITSTATUS(status);
+        for (int i = 0; i < child_count; i++)
+        {
+            int status;
+            waitpid(child_pids[i], &status, 0);
+            if (i == child_count - 1 && WIFEXITED(status))
+                last_exit_code = WEXITSTATUS(status);
+        }
     }
 
     return last_exit_code;
@@ -162,6 +175,9 @@ static int execute_single_command(const struct command_line *line, bool *need_ex
         perror("execvp");
         exit(EXIT_FAILURE);
     }
+
+    if (line->is_background)
+        return 0;
 
     int status;
     waitpid(pid, &status, 0);
