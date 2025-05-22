@@ -69,6 +69,9 @@ struct filedesc
 
 	/** Current offset in the file. */
 	size_t offset;
+
+	/** Access flags for this descriptor (read/write mode). */
+	int flags;
 };
 
 /**
@@ -191,6 +194,10 @@ int ufs_open(const char *filename, int flags)
 	descriptor->file = file;
 	descriptor->block = file->block_list;
 	descriptor->offset = 0;
+
+	int access_flags = flags & ~(UFS_CREATE);
+	descriptor->flags = access_flags ? access_flags : UFS_READ_WRITE;
+
 	file->refs++;
 
 	if (file_descriptor_count == file_descriptor_capacity)
@@ -236,6 +243,12 @@ ssize_t ufs_write(int file_descriptor, const char *buffer, size_t size)
 	}
 
 	struct filedesc *descriptor = file_descriptors[file_descriptor];
+	if (!(descriptor->flags & UFS_WRITE_ONLY) && !(descriptor->flags & UFS_READ_WRITE))
+	{
+		ufs_error_code = UFS_ERR_NO_PERMISSION;
+		return -1;
+	}
+
 	struct file *file = descriptor->file;
 	size_t bytes_written = 0;
 
@@ -311,6 +324,12 @@ ssize_t ufs_read(int file_descriptor, char *buffer, size_t size)
 	}
 
 	struct filedesc *descriptor = file_descriptors[file_descriptor];
+	if (!(descriptor->flags & UFS_READ_ONLY) && !(descriptor->flags & UFS_READ_WRITE))
+	{
+		ufs_error_code = UFS_ERR_NO_PERMISSION;
+		return -1;
+	}
+
 	struct file *file = descriptor->file;
 
 	if (descriptor->offset >= file->size)
