@@ -23,13 +23,14 @@
  * It is important to define these macros here, in the header,
  * because it is used by tests.
  */
-#define NEED_OPEN_FLAGS 0
-#define NEED_RESIZE 0
+#define NEED_OPEN_FLAGS 1
+#define NEED_RESIZE 1
 
 /**
  * Flags for ufs_open call.
  */
-enum open_flags {
+enum open_flags
+{
 	/**
 	 * If the flag specified and a file does not exist -
 	 * create it.
@@ -57,7 +58,8 @@ enum open_flags {
 };
 
 /** Possible errors from all functions. */
-enum ufs_error_code {
+enum ufs_error_code
+{
 	UFS_ERR_NO_ERR = 0,
 	UFS_ERR_NO_FILE,
 	UFS_ERR_NO_MEM,
@@ -70,8 +72,7 @@ enum ufs_error_code {
 };
 
 /** Get code of the last error. */
-enum ufs_error_code
-ufs_errno();
+enum ufs_error_code ufs_errno();
 
 /**
  * Open a file by filename.
@@ -83,8 +84,7 @@ ufs_errno();
  *     - UFS_ERR_NO_FILE - no such file, and UFS_CREATE flag is
  *       not specified.
  */
-int
-ufs_open(const char *filename, int flags);
+int ufs_open(const char *filename, int flags);
 
 /**
  * Write data to the file.
@@ -97,8 +97,7 @@ ufs_open(const char *filename, int flags);
  *     - UFS_ERR_NO_FILE - invalid file descriptor.
  *     - UFS_ERR_NO_MEM - not enough memory.
  */
-ssize_t
-ufs_write(int fd, const char *buf, size_t size);
+ssize_t ufs_write(int fd, const char *buf, size_t size);
 
 /**
  * Read data from the file.
@@ -111,8 +110,7 @@ ufs_write(int fd, const char *buf, size_t size);
  * @retval -1 Error occurred. Check ufs_errno() for a code.
  *     - UFS_ERR_NO_FILE - invalid file descriptor.
  */
-ssize_t
-ufs_read(int fd, char *buf, size_t size);
+ssize_t ufs_read(int fd, char *buf, size_t size);
 
 /**
  * Close a file.
@@ -121,8 +119,7 @@ ufs_read(int fd, char *buf, size_t size);
  * @retval -1 Error occurred. Check ufs_errno() for a code.
  *     - UFS_ERR_NO_FILE - invalid file descriptor.
  */
-int
-ufs_close(int fd);
+int ufs_close(int fd);
 
 /**
  * Delete a file by its name. Note, that it is allowed to drop the
@@ -136,8 +133,7 @@ ufs_close(int fd);
  * @retval -1 Error occurred. Check ufs_errno() for a code.
  *     - UFS_ERR_NO_FILE - no such file.
  */
-int
-ufs_delete(const char *filename);
+int ufs_delete(const char *filename);
 
 #if NEED_RESIZE
 
@@ -159,8 +155,7 @@ ufs_delete(const char *filename);
  *     - UFS_ERR_NO_MEM - not enough memory. Can appear only when
  *       @a new_size is bigger than the current size.
  */
-int
-ufs_resize(int fd, size_t new_size);
+int ufs_resize(int fd, size_t new_size);
 
 #endif
 
@@ -169,5 +164,4 @@ ufs_resize(int fd, size_t new_size);
  * the files. After the destruction neither of the ufs functions are supposed to
  * be used. Purpose of the destruction is to reclaim all the dynamic memory.
  */
-void
-ufs_destroy(void);
+void ufs_destroy(void);
