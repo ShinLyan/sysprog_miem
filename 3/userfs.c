@@ -131,9 +131,21 @@ static void append_block(struct file *file, struct block *block)
 	file->last_block = block;
 }
 
-static void free_file(struct file *file)
+static struct block *find_block_by_offset(struct block *start, size_t offset)
 {
-	struct block *block = file->block_list;
+	struct block *block = start;
+	size_t position = 0;
+	while (block && position + BLOCK_SIZE <= offset)
+	{
+		position += BLOCK_SIZE;
+		block = block->next;
+	}
+
+	return block;
+}
+
+static void free_file_blocks(struct block *block)
+{
 	while (block)
 	{
 		struct block *next = block->next;
@@ -141,7 +153,11 @@ static void free_file(struct file *file)
 		free(block);
 		block = next;
 	}
+}
 
+static void free_file(struct file *file)
+{
+	free_file_blocks(file->block_list);
 	free(file->name);
 	free(file);
 }
@@ -155,6 +171,12 @@ static void remove_file_from_list(struct file *file)
 
 	if (file->next)
 		file->next->prev = file->prev;
+}
+
+static void update_descriptor_block(struct filedesc *descriptor)
+{
+	if (!descriptor->block || descriptor->offset == 0)
+		descriptor->block = find_block_by_offset(descriptor->file->block_list, descriptor->offset);
 }
 
 int ufs_open(const char *filename, int flags)
@@ -250,8 +272,9 @@ ssize_t ufs_write(int file_descriptor, const char *buffer, size_t size)
 	}
 
 	struct file *file = descriptor->file;
-	size_t bytes_written = 0;
+	update_descriptor_block(descriptor);
 
+	size_t bytes_written = 0;
 	while (bytes_written < size)
 	{
 		if (descriptor->offset >= MAX_FILE_SIZE)
@@ -335,9 +358,11 @@ ssize_t ufs_read(int file_descriptor, char *buffer, size_t size)
 	if (descriptor->offset >= file->size)
 		return 0;
 
+	update_descriptor_block(descriptor);
+
 	size_t bytes_read = 0;
 	size_t current_offset = descriptor->offset;
-	struct block *block = descriptor->block ? descriptor->block : file->block_list;
+	struct block *block = descriptor->block;
 
 	while (block && bytes_read < size && current_offset < file->size)
 	{
@@ -420,13 +445,129 @@ int ufs_delete(const char *filename)
 
 #if NEED_RESIZE
 
-int ufs_resize(int fd, size_t new_size)
+int ufs_resize(int file_descriptor, size_t new_size)
 {
-	/* IMPLEMENT THIS FUNCTION */
-	(void)fd;
-	(void)new_size;
-	ufs_error_code = UFS_ERR_NOT_IMPLEMENTED;
-	return -1;
+	if (file_descriptor < 0 || file_descriptor >= file_descriptor_capacity ||
+		!file_descriptors[file_descriptor])
+	{
+		ufs_error_code = UFS_ERR_NO_FILE;
+		return -1;
+	}
+
+	struct filedesc *descriptor = file_descriptors[file_descriptor];
+	struct file *file = descriptor->file;
+
+	if (!(descriptor->flags & UFS_WRITE_ONLY) && !(descriptor->flags & UFS_READ_WRITE))
+	{
+		ufs_error_code = UFS_ERR_NO_PERMISSION;
+		return -1;
+	}
+
+	if (new_size > MAX_FILE_SIZE)
+	{
+		ufs_error_code = UFS_ERR_NO_MEM;
+		return -1;
+	}
+
+	// Увеличение размера файла
+	if (new_size > file->size)
+	{
+		size_t to_allocate = new_size - file->size;
+		struct block *last = file->last_block;
+
+		if (!last)
+		{
+			last = allocate_block();
+			if (!last)
+			{
+				ufs_error_code = UFS_ERR_NO_MEM;
+				return -1;
+			}
+
+			file->block_list = file->last_block = last;
+		}
+
+		while (to_allocate > 0)
+		{
+			size_t available = BLOCK_SIZE - last->occupied;
+			size_t to_grow = to_allocate < available ? to_allocate : available;
+
+			last->occupied += (int)to_grow;
+			file->size += to_grow;
+			to_allocate -= to_grow;
+
+			if (to_allocate > 0)
+			{
+				struct block *new_block = allocate_block();
+				if (!new_block)
+				{
+					ufs_error_code = UFS_ERR_NO_MEM;
+					return -1;
+				}
+
+				last->next = new_block;
+				new_block->prev = last;
+				file->last_block = new_block;
+				last = new_block;
+			}
+		}
+		return 0;
+	}
+
+	// Уменьшение размера файла
+	struct block *block = file->block_list;
+	struct block *last_needed = NULL;
+	size_t position = 0;
+
+	while (block)
+	{
+		size_t block_start = position;
+		size_t block_end = position + BLOCK_SIZE;
+
+		if (new_size > block_start)
+			last_needed = block;
+
+		if (block_end >= new_size)
+			break;
+
+		position = block_end;
+		block = block->next;
+	}
+
+	if (last_needed)
+	{
+		struct block *to_free = last_needed->next;
+		last_needed->next = NULL;
+		file->last_block = last_needed;
+
+		free_file_blocks(to_free);
+	}
+	else
+	{
+		free_file_blocks(file->block_list);
+
+		file->block_list = file->last_block = NULL;
+	}
+
+	file->size = new_size;
+
+	// Обновить все дескрипторы
+	for (int i = 0; i < file_descriptor_capacity; i++)
+	{
+		struct filedesc *descriptor = file_descriptors[i];
+		if (descriptor && descriptor->file == file)
+		{
+			if (descriptor->offset > new_size)
+				descriptor->offset = new_size;
+
+			if (descriptor->offset == new_size || file->block_list == NULL)
+				descriptor->block = NULL;
+			else
+				descriptor->block = find_block_by_offset(file->block_list, descriptor->offset);
+		}
+	}
+
+	return 0;
 }
 
 #endif
