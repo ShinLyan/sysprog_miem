@@ -9,8 +9,6 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 
-#define MAX_CHILD_PROCESSES 1024
-
 static void reap_background_processes();
 int execute_command_block(const struct command_line *line, struct expr **expr_ptr, bool *need_exit);
 static bool run_builtin_command(const struct command *command, bool *need_exit, int *exit_code);
@@ -147,7 +145,7 @@ static int run_pipeline(const struct command_line *line)
     struct expr *current_expr = line->head;
     int pipe_fds[2];
     int input_fd = -1;
-    pid_t process_ids[MAX_CHILD_PROCESSES];
+    pid_t *process_ids = NULL;
     pid_t last_process_id = -1;
     int process_count = 0;
 
@@ -195,8 +193,14 @@ static int run_pipeline(const struct command_line *line)
             _exit(code);
         }
 
-        if (process_count < MAX_CHILD_PROCESSES)
-            process_ids[process_count++] = child_pid;
+        process_ids = realloc(process_ids, sizeof(pid_t) * (process_count + 1));
+        if (!process_ids)
+        {
+            perror("realloc");
+            exit(EXIT_FAILURE);
+        }
+
+        process_ids[process_count++] = child_pid;
 
         if (is_last)
             last_process_id = child_pid;
