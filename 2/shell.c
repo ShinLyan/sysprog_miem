@@ -218,9 +218,13 @@ static int run_pipeline(const struct command_line *line)
     if (input_fd != -1)
         close(input_fd);
 
-    return line->is_background
-               ? 0
-               : wait_for_processes(process_ids, process_count, last_process_id);
+    int exit_code = line->is_background
+                        ? 0
+                        : wait_for_processes(process_ids, process_count, last_process_id);
+
+    free(process_ids);
+
+    return exit_code;
 }
 
 static void redirect_io(int input_fd, int output_fd)
