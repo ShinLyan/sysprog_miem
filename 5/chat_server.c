@@ -167,10 +167,11 @@ int chat_server_update(struct chat_server *server, double timeout)
 			int read_result = read_from_peer(server, peer);
 			if (read_result != 0)
 				return read_result;
-
-			flush_peer_output(peer);
 		}
 	}
+
+	for (struct chat_peer *peer = server->peers; peer; peer = peer->next)
+		flush_peer_output(peer);
 
 	return 0;
 }
@@ -186,6 +187,7 @@ static int accept_new_clients(struct chat_server *server)
 				break;
 			return CHAT_ERR_SYS;
 		}
+
 		fcntl(client_socket, F_SETFL, fcntl(client_socket, F_GETFL, 0) | O_NONBLOCK);
 
 		struct chat_peer *new_peer = calloc(1, sizeof(*new_peer));
@@ -198,6 +200,7 @@ static int accept_new_clients(struct chat_server *server)
 			.data.ptr = new_peer};
 		epoll_ctl(server->epoll_fd, EPOLL_CTL_ADD, client_socket, &peer_event);
 	}
+
 	return 0;
 }
 
@@ -209,14 +212,17 @@ static int read_from_peer(struct chat_server *server, struct chat_peer *peer)
 		ssize_t bytes_read = read(peer->socket, temporary_read_buffer, sizeof(temporary_read_buffer));
 		if (bytes_read <= 0)
 			break;
+
 		if (peer->input_buffer_size + bytes_read >= peer->input_buffer_capacity)
 		{
 			peer->input_buffer_capacity = (peer->input_buffer_size + bytes_read) * 2;
 			peer->input_buffer = realloc(peer->input_buffer, peer->input_buffer_capacity);
 		}
+
 		memcpy(peer->input_buffer + peer->input_buffer_size, temporary_read_buffer, bytes_read);
 		peer->input_buffer_size += bytes_read;
 	}
+
 	ssize_t message_start = 0;
 	for (ssize_t i = 0; i < peer->input_buffer_size; i++)
 	{
@@ -229,6 +235,7 @@ static int read_from_peer(struct chat_server *server, struct chat_peer *peer)
 				memcpy(raw_message, peer->input_buffer + message_start, message_length);
 				raw_message[message_length] = '\0';
 				trim_message(raw_message, &message_length);
+
 				if (message_length > 0)
 				{
 					struct chat_message *message = malloc(sizeof(*message));
@@ -238,6 +245,7 @@ static int read_from_peer(struct chat_server *server, struct chat_peer *peer)
 						server->message_tail->next = message;
 					else
 						server->message_head = message;
+
 					server->message_tail = message;
 
 					size_t output_size = message_length + 1;
@@ -249,32 +257,37 @@ static int read_from_peer(struct chat_server *server, struct chat_peer *peer)
 					{
 						if (other_peer == peer)
 							continue;
+
 						struct buffer *send_buffer = malloc(sizeof(*send_buffer) + output_size);
 						memcpy(send_buffer->data, broadcast_message, output_size);
 						send_buffer->offset = 0;
 						send_buffer->size = output_size;
 						send_buffer->next = NULL;
+
 						if (other_peer->output_buffer_tail)
 							other_peer->output_buffer_tail->next = send_buffer;
 						else
 							other_peer->output_buffer_head = send_buffer;
+
 						other_peer->output_buffer_tail = send_buffer;
 					}
+
 					free(broadcast_message);
 				}
 				else
-				{
 					free(raw_message);
-				}
 			}
+
 			message_start = i + 1;
 		}
 	}
+
 	if (message_start > 0)
 	{
 		memmove(peer->input_buffer, peer->input_buffer + message_start, peer->input_buffer_size - message_start);
 		peer->input_buffer_size -= message_start;
 	}
+
 	return 0;
 }
 
@@ -283,11 +296,14 @@ static void flush_peer_output(struct chat_peer *peer)
 	while (peer->output_buffer_head)
 	{
 		struct buffer *buffer = peer->output_buffer_head;
-		ssize_t bytes_written = write(peer->socket, buffer->data + buffer->offset, buffer->size - buffer->offset);
+		ssize_t bytes_written = send(peer->socket, buffer->data + buffer->offset, buffer->size - buffer->offset, MSG_NOSIGNAL);
+
 		if (bytes_written < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
 			break;
+
 		if (bytes_written < 0)
 			return;
+
 		buffer->offset += bytes_written;
 		if (buffer->offset == buffer->size)
 		{

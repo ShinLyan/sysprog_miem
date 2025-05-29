@@ -213,7 +213,7 @@ static int send_pending_output(struct chat_client *client)
 	while (client->output_head)
 	{
 		struct buffer *buffer = client->output_head;
-		ssize_t bytes_written = write(client->socket, buffer->data + buffer->offset, buffer->size - buffer->offset);
+		ssize_t bytes_written = send(client->socket, buffer->data + buffer->offset, buffer->size - buffer->offset, MSG_NOSIGNAL);
 
 		if (bytes_written < 0)
 		{
