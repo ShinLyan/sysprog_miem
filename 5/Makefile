@@ -1,6 +1,7 @@
 GCC_FLAGS = -Wextra -Werror -Wall -Wno-gnu-folding-constant
 
 all: lib exe test
+	./test
 
 lib: chat.c chat_client.c chat_server.c
 	gcc $(GCC_FLAGS) -c chat.c -o chat.o
@@ -22,4 +23,4 @@ test_glob:
 
 clean:
 	rm *.o
-	rm client server test
+	rm client server test debug.log

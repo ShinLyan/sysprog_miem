@@ -1,7 +1,0 @@
-{
-    "files.associations": {
-        "unistd.h": "c",
-        "fcntl.h": "c",
-        "condition_variable": "c"
-    }
-}

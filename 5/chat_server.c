@@ -9,40 +9,53 @@
 #include <poll.h>
 #include <errno.h>
 #include <netinet/in.h>
+#include <sys/epoll.h>
 
-struct server_peer
+struct buffer
 {
-	int socket;
-	char *input_buf;
+	struct buffer *next;
 	ssize_t size;
-	ssize_t capacity;
-	struct server_peer *next;
+	ssize_t offset;
+	char data[];
 };
 
 struct chat_peer
 {
-	/** Client's socket. To read/write messages. */
 	int socket;
-	/** Output buffer. */
-	/* ... */
-	/* PUT HERE OTHER MEMBERS */
+
+	struct buffer *output_buffer_head;
+	struct buffer *output_buffer_tail;
+
+	char *input_buffer;
+	ssize_t input_buffer_size;
+	ssize_t input_buffer_capacity;
+
+	struct chat_peer *next;
 };
 
 struct chat_server
 {
 	int socket;
-	struct server_peer *peers;
-	struct chat_message *messages;
-	struct chat_message *last;
+	int epoll_fd;
+	struct chat_peer *peers;
+	struct chat_message *message_head;
+	struct chat_message *message_tail;
 };
+
+static int accept_new_clients(struct chat_server *server);
+static int read_from_peer(struct chat_server *server, struct chat_peer *peer);
+static void flush_peer_output(struct chat_peer *peer);
+static void trim_message(char *text, ssize_t *length);
+static void free_peer(struct chat_peer *peer);
 
 struct chat_server *chat_server_new(void)
 {
-	struct chat_server *server = malloc(sizeof(*server));
+	struct chat_server *server = calloc(1, sizeof(*server));
 	server->socket = -1;
-	server->peers = NULL;
-	server->messages = NULL;
-	server->last = NULL;
+	server->epoll_fd = epoll_create1(0);
+	if (server->epoll_fd < 0)
+		abort();
+
 	return server;
 }
 
@@ -51,21 +64,21 @@ void chat_server_delete(struct chat_server *server)
 	if (server->socket >= 0)
 		close(server->socket);
 
-	struct server_peer *peer = server->peers;
-	while (peer)
+	if (server->epoll_fd >= 0)
+		close(server->epoll_fd);
+
+	while (server->peers)
 	{
-		close(peer->socket);
-		free(peer->input_buf);
-		struct server_peer *next = peer->next;
-		free(peer);
-		peer = next;
+		struct chat_peer *next = server->peers->next;
+		free_peer(server->peers);
+		server->peers = next;
 	}
 
-	while (server->messages)
+	while (server->message_head)
 	{
-		struct chat_message *m = server->messages;
-		server->messages = m->next;
-		chat_message_delete(m);
+		struct chat_message *message = server->message_head;
+		server->message_head = message->next;
+		chat_message_delete(message);
 	}
 
 	free(server);
@@ -76,63 +89,54 @@ int chat_server_listen(struct chat_server *server, uint16_t port)
 	if (server->socket >= 0)
 		return CHAT_ERR_ALREADY_STARTED;
 
-	int sock = socket(AF_INET, SOCK_STREAM, 0);
-	if (sock < 0)
+	int server_socket = socket(AF_INET, SOCK_STREAM, 0);
+	if (server_socket < 0)
 		return CHAT_ERR_SYS;
 
-	int one = 1;
-	setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
+	int enable = 1;
+	setsockopt(server_socket, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(enable));
 
-	struct sockaddr_in addr = {0};
-	addr.sin_family = AF_INET;
-	addr.sin_addr.s_addr = htonl(INADDR_ANY);
-	addr.sin_port = htons(port);
+	struct sockaddr_in address = {0};
+	address.sin_family = AF_INET;
+	address.sin_addr.s_addr = htonl(INADDR_ANY);
+	address.sin_port = htons(port);
 
-	if (bind(sock, (struct sockaddr *)&addr, sizeof(addr)) != 0)
+	if (bind(server_socket, (struct sockaddr *)&address, sizeof(address)) != 0)
 	{
-		close(sock);
+		close(server_socket);
 		return CHAT_ERR_PORT_BUSY;
 	}
 
-	if (listen(sock, 16) != 0)
+	if (listen(server_socket, 16) != 0)
 	{
-		close(sock);
+		close(server_socket);
 		return CHAT_ERR_SYS;
 	}
 
-	int flags = fcntl(sock, F_GETFL, 0);
-	fcntl(sock, F_SETFL, flags | O_NONBLOCK);
+	fcntl(server_socket, F_SETFL, fcntl(server_socket, F_GETFL, 0) | O_NONBLOCK);
+	server->socket = server_socket;
 
-	server->socket = sock;
+	struct epoll_event event = {
+		.events = EPOLLIN | EPOLLET,
+		.data.ptr = server};
+
+	epoll_ctl(server->epoll_fd, EPOLL_CTL_ADD, server_socket, &event);
 	return 0;
 }
 
 struct chat_message *chat_server_pop_next(struct chat_server *server)
 {
-	if (!server->messages)
+	struct chat_message *message = server->message_head;
+	if (!message)
 		return NULL;
 
-	struct chat_message *msg = server->messages;
-	server->messages = msg->next;
-	if (!server->messages)
-		server->last = NULL;
-	msg->next = NULL;
-	return msg;
-}
+	server->message_head = message->next;
 
-static void trim(char *str, ssize_t *len)
-{
-	while (*len > 0 && isspace((unsigned char)str[0]))
-	{
-		str++;
-		(*len)--;
-	}
-	while (*len > 0 && isspace((unsigned char)str[*len - 1]))
-	{
-		(*len)--;
-	}
-	memmove(str - (str - str), str, *len);
-	str[*len] = '\0';
+	if (!server->message_head)
+		server->message_tail = NULL;
+
+	message->next = NULL;
+	return message;
 }
 
 int chat_server_update(struct chat_server *server, double timeout)
@@ -140,137 +144,189 @@ int chat_server_update(struct chat_server *server, double timeout)
 	if (server->socket < 0)
 		return CHAT_ERR_NOT_STARTED;
 
-	int count = 1;
-	struct server_peer *p = server->peers;
-	while (p)
-	{
-		count++;
-		p = p->next;
-	}
-
-	struct pollfd *fds = malloc(sizeof(*fds) * count);
-	fds[0].fd = server->socket;
-	fds[0].events = POLLIN;
-
-	int i = 1;
-	p = server->peers;
-	while (p)
-	{
-		fds[i].fd = p->socket;
-		fds[i].events = POLLIN;
-		i++;
-		p = p->next;
-	}
-
-	int rc = poll(fds, count, (int)(timeout * 1000));
-	if (rc == 0)
-	{
-		free(fds);
+	struct epoll_event events[16];
+	int ready_count = epoll_wait(server->epoll_fd, events, 16, (int)(timeout * 1000));
+	if (ready_count == 0)
 		return CHAT_ERR_TIMEOUT;
-	}
-	if (rc < 0)
-	{
-		free(fds);
+
+	if (ready_count < 0)
 		return CHAT_ERR_SYS;
-	}
 
-	if (fds[0].revents & POLLIN)
+	for (int i = 0; i < ready_count; i++)
 	{
-		while (1)
+		void *context = events[i].data.ptr;
+		if (context == server)
 		{
-			int cfd = accept(server->socket, NULL, NULL);
-			if (cfd < 0)
-			{
-				if (errno == EAGAIN || errno == EWOULDBLOCK)
-					break;
-				free(fds);
-				return CHAT_ERR_SYS;
-			}
-			int flags = fcntl(cfd, F_GETFL, 0);
-			fcntl(cfd, F_SETFL, flags | O_NONBLOCK);
+			int accept_result = accept_new_clients(server);
+			if (accept_result != 0)
+				return accept_result;
+		}
+		else
+		{
+			struct chat_peer *peer = context;
+			int read_result = read_from_peer(server, peer);
+			if (read_result != 0)
+				return read_result;
 
-			struct server_peer *new_peer = malloc(sizeof(*new_peer));
-			new_peer->socket = cfd;
-			new_peer->input_buf = NULL;
-			new_peer->size = 0;
-			new_peer->capacity = 0;
-			new_peer->next = server->peers;
-			server->peers = new_peer;
+			flush_peer_output(peer);
 		}
 	}
 
-	i = 1;
-	struct server_peer **indirect = &server->peers;
-	while (*indirect)
-	{
-		struct server_peer *peer = *indirect;
-		if (fds[i].revents & POLLIN)
-		{
-			char buffer[512];
-			ssize_t r = read(peer->socket, buffer, sizeof(buffer));
-			if (r == 0)
-			{
-				close(peer->socket);
-				free(peer->input_buf);
-				*indirect = peer->next;
-				free(peer);
-				i++;
-				continue;
-			}
-			if (r > 0)
-			{
-				if (peer->size + r >= peer->capacity)
-				{
-					peer->capacity = (peer->size + r) * 2;
-					peer->input_buf = realloc(peer->input_buf, peer->capacity);
-				}
-				memcpy(peer->input_buf + peer->size, buffer, r);
-				peer->size += r;
-
-				ssize_t start = 0;
-				for (ssize_t j = 0; j < peer->size; j++)
-				{
-					if (peer->input_buf[j] == '\n')
-					{
-						ssize_t len = j - start;
-						if (len > 0)
-						{
-							char *msg_data = malloc(len + 1);
-							memcpy(msg_data, peer->input_buf + start, len);
-							msg_data[len] = '\0';
-							ssize_t l = len;
-							trim(msg_data, &l);
-							if (l > 0)
-							{
-								struct chat_message *msg = malloc(sizeof(*msg));
-								msg->data = msg_data;
-								msg->next = NULL;
-								if (server->last)
-									server->last->next = msg;
-								else
-									server->messages = msg;
-								server->last = msg;
-								continue;
-							}
-							free(msg_data);
-						}
-						start = j + 1;
-					}
-				}
-
-				if (start > 0)
-				{
-					memmove(peer->input_buf, peer->input_buf + start, peer->size - start);
-					peer->size -= start;
-				}
-			}
-		}
-		i++;
-		indirect = &(*indirect)->next;
-	}
-
-	free(fds);
 	return 0;
+}
+
+static int accept_new_clients(struct chat_server *server)
+{
+	while (1)
+	{
+		int client_socket = accept(server->socket, NULL, NULL);
+		if (client_socket < 0)
+		{
+			if (errno == EAGAIN || errno == EWOULDBLOCK)
+				break;
+			return CHAT_ERR_SYS;
+		}
+		fcntl(client_socket, F_SETFL, fcntl(client_socket, F_GETFL, 0) | O_NONBLOCK);
+
+		struct chat_peer *new_peer = calloc(1, sizeof(*new_peer));
+		new_peer->socket = client_socket;
+		new_peer->next = server->peers;
+		server->peers = new_peer;
+
+		struct epoll_event peer_event = {
+			.events = EPOLLIN | EPOLLOUT | EPOLLET,
+			.data.ptr = new_peer};
+		epoll_ctl(server->epoll_fd, EPOLL_CTL_ADD, client_socket, &peer_event);
+	}
+	return 0;
+}
+
+static int read_from_peer(struct chat_server *server, struct chat_peer *peer)
+{
+	char temporary_read_buffer[512];
+	while (1)
+	{
+		ssize_t bytes_read = read(peer->socket, temporary_read_buffer, sizeof(temporary_read_buffer));
+		if (bytes_read <= 0)
+			break;
+		if (peer->input_buffer_size + bytes_read >= peer->input_buffer_capacity)
+		{
+			peer->input_buffer_capacity = (peer->input_buffer_size + bytes_read) * 2;
+			peer->input_buffer = realloc(peer->input_buffer, peer->input_buffer_capacity);
+		}
+		memcpy(peer->input_buffer + peer->input_buffer_size, temporary_read_buffer, bytes_read);
+		peer->input_buffer_size += bytes_read;
+	}
+	ssize_t message_start = 0;
+	for (ssize_t i = 0; i < peer->input_buffer_size; i++)
+	{
+		if (peer->input_buffer[i] == '\n')
+		{
+			ssize_t message_length = i - message_start;
+			if (message_length > 0)
+			{
+				char *raw_message = malloc(message_length + 1);
+				memcpy(raw_message, peer->input_buffer + message_start, message_length);
+				raw_message[message_length] = '\0';
+				trim_message(raw_message, &message_length);
+				if (message_length > 0)
+				{
+					struct chat_message *message = malloc(sizeof(*message));
+					message->data = raw_message;
+					message->next = NULL;
+					if (server->message_tail)
+						server->message_tail->next = message;
+					else
+						server->message_head = message;
+					server->message_tail = message;
+
+					size_t output_size = message_length + 1;
+					char *broadcast_message = malloc(output_size);
+					memcpy(broadcast_message, raw_message, message_length);
+					broadcast_message[message_length] = '\n';
+
+					for (struct chat_peer *other_peer = server->peers; other_peer; other_peer = other_peer->next)
+					{
+						if (other_peer == peer)
+							continue;
+						struct buffer *send_buffer = malloc(sizeof(*send_buffer) + output_size);
+						memcpy(send_buffer->data, broadcast_message, output_size);
+						send_buffer->offset = 0;
+						send_buffer->size = output_size;
+						send_buffer->next = NULL;
+						if (other_peer->output_buffer_tail)
+							other_peer->output_buffer_tail->next = send_buffer;
+						else
+							other_peer->output_buffer_head = send_buffer;
+						other_peer->output_buffer_tail = send_buffer;
+					}
+					free(broadcast_message);
+				}
+				else
+				{
+					free(raw_message);
+				}
+			}
+			message_start = i + 1;
+		}
+	}
+	if (message_start > 0)
+	{
+		memmove(peer->input_buffer, peer->input_buffer + message_start, peer->input_buffer_size - message_start);
+		peer->input_buffer_size -= message_start;
+	}
+	return 0;
+}
+
+static void flush_peer_output(struct chat_peer *peer)
+{
+	while (peer->output_buffer_head)
+	{
+		struct buffer *buffer = peer->output_buffer_head;
+		ssize_t bytes_written = write(peer->socket, buffer->data + buffer->offset, buffer->size - buffer->offset);
+		if (bytes_written < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
+			break;
+		if (bytes_written < 0)
+			return;
+		buffer->offset += bytes_written;
+		if (buffer->offset == buffer->size)
+		{
+			peer->output_buffer_head = buffer->next;
+			if (peer->output_buffer_tail == buffer)
+				peer->output_buffer_tail = NULL;
+			free(buffer);
+		}
+		else
+		{
+			break;
+		}
+	}
+}
+
+static void trim_message(char *text, ssize_t *length)
+{
+	char *start = text;
+	char *end = text + *length;
+	while (start < end && isspace((unsigned char)*start))
+		start++;
+	while (end > start && isspace((unsigned char)*(end - 1)))
+		end--;
+	*length = end - start;
+	memmove(text, start, *length);
+	text[*length] = '\0';
+}
+
+static void free_peer(struct chat_peer *peer)
+{
+	close(peer->socket);
+	while (peer->output_buffer_head)
+	{
+		struct buffer *next = peer->output_buffer_head->next;
+		free(peer->output_buffer_head);
+		peer->output_buffer_head = next;
+	}
+	free(peer->input_buffer);
+	free(peer);
 }
 
 int chat_server_get_descriptor(const struct chat_server *server)
@@ -292,8 +348,7 @@ int chat_server_get_descriptor(const struct chat_server *server)
 	 * sockets.
 	 */
 #endif
-	(void)server;
-	return -1;
+	return server->epoll_fd;
 }
 
 int chat_server_get_socket(const struct chat_server *server)
@@ -305,6 +360,10 @@ int chat_server_get_events(const struct chat_server *server)
 {
 	if (server->socket < 0)
 		return 0;
+
+	for (struct chat_peer *peer = server->peers; peer; peer = peer->next)
+		if (peer->output_buffer_head != NULL)
+			return CHAT_EVENT_INPUT | CHAT_EVENT_OUTPUT;
 
 	return CHAT_EVENT_INPUT;
 }

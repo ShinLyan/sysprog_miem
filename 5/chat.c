@@ -3,18 +3,20 @@
 #include <poll.h>
 #include <stdlib.h>
 
-void chat_message_delete(struct chat_message *msg)
+void chat_message_delete(struct chat_message *message)
 {
-	free(msg->data);
-	free(msg);
+	free(message->data);
+	free(message);
 }
 
 int chat_events_to_poll_events(int mask)
 {
-	int res = 0;
+	int poll_event_mask = 0;
 	if ((mask & CHAT_EVENT_INPUT) != 0)
-		res |= POLLIN;
+		poll_event_mask |= POLLIN;
+
 	if ((mask & CHAT_EVENT_OUTPUT) != 0)
-		res |= POLLOUT;
-	return res;
+		poll_event_mask |= POLLOUT;
+
+	return poll_event_mask;
 }
