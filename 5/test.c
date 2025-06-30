@@ -8,18 +8,19 @@
 #include <string.h>
 #include <sys/socket.h>
 
-enum {
+enum
+{
 	TEST_MSG_ID_LEN = 64,
 };
 
-struct test_msg {
+struct test_msg
+{
 	uint32_t len;
 	uint32_t size;
 	char *data;
 };
 
-static struct test_msg *
-test_msg_new(uint32_t len)
+static struct test_msg *test_msg_new(uint32_t len)
 {
 	len += TEST_MSG_ID_LEN;
 	uint32_t size = len + 1;
@@ -34,8 +35,7 @@ test_msg_new(uint32_t len)
 	return res;
 }
 
-static void
-test_msg_set_id(struct test_msg *msg, int cli_id, int msg_id)
+static void test_msg_set_id(struct test_msg *msg, int cli_id, int msg_id)
 {
 	unit_fail_if(msg->len < TEST_MSG_ID_LEN);
 	memset(msg->data, '0', TEST_MSG_ID_LEN);
@@ -44,15 +44,13 @@ test_msg_set_id(struct test_msg *msg, int cli_id, int msg_id)
 	msg->data[rc] = '0';
 }
 
-static void
-test_msg_clear_id(struct test_msg *msg)
+static void test_msg_clear_id(struct test_msg *msg)
 {
 	unit_fail_if(msg->len < TEST_MSG_ID_LEN);
 	memset(msg->data, '0', TEST_MSG_ID_LEN);
 }
 
-static void
-test_msg_check_data(const struct test_msg *msg, const char *data)
+static void test_msg_check_data(const struct test_msg *msg, const char *data)
 {
 	uint32_t len = strlen(data);
 	unit_fail_if(len != msg->len);
@@ -60,14 +58,12 @@ test_msg_check_data(const struct test_msg *msg, const char *data)
 	unit_fail_if(memcmp(msg->data, data, len) != 0);
 }
 
-static void
-test_msg_delete(struct test_msg *msg)
+static void test_msg_delete(struct test_msg *msg)
 {
 	free(msg);
 }
 
-static void
-chat_message_extract_id(struct chat_message *msg, int *cli_id, int *msg_id)
+static void chat_message_extract_id(struct chat_message *msg, int *cli_id, int *msg_id)
 {
 	uint32_t len = strlen(msg->data);
 	unit_fail_if(len < TEST_MSG_ID_LEN);
@@ -76,8 +72,7 @@ chat_message_extract_id(struct chat_message *msg, int *cli_id, int *msg_id)
 	memset(msg->data, '0', TEST_MSG_ID_LEN);
 }
 
-static uint16_t
-server_get_port(const struct chat_server *s)
+static uint16_t server_get_port(const struct chat_server *s)
 {
 	int sock = chat_server_get_socket(s);
 	unit_fail_if(sock < 0);
@@ -91,56 +86,54 @@ server_get_port(const struct chat_server *s)
 	return ntohs(((struct sockaddr_in6 *)&addr)->sin6_port);
 }
 
-static inline const char *
-make_addr_str(uint16_t port)
+static inline const char *make_addr_str(uint16_t port)
 {
 	static __thread char host[128];
 	sprintf(host, "localhost:%u", port);
 	return host;
 }
 
-static void
-server_consume_events(struct chat_server *s)
+static void server_consume_events(struct chat_server *s)
 {
 	int rc;
 	while ((rc = chat_server_update(s, 0)) == 0)
-		{};
+	{
+	};
 	unit_fail_if(rc != CHAT_ERR_TIMEOUT);
 }
 
-static struct chat_message *
-server_pop_next_blocking_from(struct chat_server *s, struct chat_client *c)
+static struct chat_message *server_pop_next_blocking_from(struct chat_server *s, struct chat_client *c)
 {
 	struct chat_message *msg;
-	while ((msg = chat_server_pop_next(s)) == NULL) {
+	while ((msg = chat_server_pop_next(s)) == NULL)
+	{
 		chat_client_update(c, 0);
 		chat_server_update(s, 0);
 	}
 	return msg;
 }
 
-static void
-client_consume_events(struct chat_client *c)
+static void client_consume_events(struct chat_client *c)
 {
 	int rc;
 	while ((rc = chat_client_update(c, 0)) == 0)
-		{};
+	{
+	};
 	unit_fail_if(rc != CHAT_ERR_TIMEOUT);
 }
 
-static struct chat_message *
-client_pop_next_blocking(struct chat_client *c, struct chat_server *s)
+static struct chat_message *client_pop_next_blocking(struct chat_client *c, struct chat_server *s)
 {
 	struct chat_message *msg;
-	while ((msg = chat_client_pop_next(c)) == NULL) {
+	while ((msg = chat_client_pop_next(c)) == NULL)
+	{
 		chat_client_update(c, 0);
 		chat_server_update(s, 0);
 	}
 	return msg;
 }
 
-static bool
-author_is_eq(const struct chat_message *msg, const char *name)
+static bool author_is_eq(const struct chat_message *msg, const char *name)
 {
 #if NEED_AUTHOR
 	return strcmp(msg->author, name) == 0;
@@ -151,8 +144,7 @@ author_is_eq(const struct chat_message *msg, const char *name)
 #endif
 }
 
-static void
-test_basic(void)
+static void test_basic(void)
 {
 	unit_test_start();
 	//
@@ -162,7 +154,7 @@ test_basic(void)
 	unit_check(chat_server_get_socket(s) < 0, "server no socket");
 	unit_check(chat_server_get_events(s) == 0, "server no events");
 	unit_check(chat_server_update(s, 0) == CHAT_ERR_NOT_STARTED,
-		   "server no update");
+			   "server no update");
 	chat_server_delete(s);
 	//
 	// Delete the server right after listen.
@@ -179,7 +171,7 @@ test_basic(void)
 	//
 	struct chat_client *c1 = chat_client_new("c1");
 	unit_check(chat_client_update(c1, 0) == CHAT_ERR_NOT_STARTED,
-		   "client no update");
+			   "client no update");
 	unit_check(chat_client_get_descriptor(c1) < 0, "client no socket");
 	unit_check(chat_client_get_events(c1) == 0, "client no events");
 	chat_client_delete(c1);
@@ -191,18 +183,18 @@ test_basic(void)
 	uint16_t port = server_get_port(s);
 	c1 = chat_client_new("c1");
 	unit_check(chat_server_get_events(s) == CHAT_EVENT_INPUT,
-		   "server needs input");
+			   "server needs input");
 	unit_check(chat_server_update(s, 0) == CHAT_ERR_TIMEOUT,
-		   "server no clients yet");
+			   "server no clients yet");
 	unit_check(chat_client_connect(c1, make_addr_str(port)) == 0,
-		   "connect");
+			   "connect");
 	unit_check(chat_server_update(s, 0) == 0, "server got client");
 	unit_check(chat_server_get_events(s) == CHAT_EVENT_INPUT,
-		   "server always needs more input");
+			   "server always needs more input");
 	chat_client_delete(c1);
 	unit_check(chat_server_update(s, 0) == 0, "server lost client");
 	unit_check(chat_server_get_events(s) == CHAT_EVENT_INPUT,
-		   "server needs more input");
+			   "server needs more input");
 	//
 	// Connect a client and send a message.
 	//
@@ -221,7 +213,7 @@ test_basic(void)
 	//
 	// Yes, 5, not 10. Send only "msg1\n".
 	unit_check(chat_client_feed(c1, "msg1\nmsg2\n", 5) == 0,
-		   "feed a part of str");
+			   "feed a part of str");
 	client_consume_events(c1);
 	server_consume_events(s);
 	msg = chat_server_pop_next(s);
@@ -235,8 +227,7 @@ test_basic(void)
 	unit_test_finish();
 }
 
-static void
-test_big_messages(void)
+static void test_big_messages(void)
 {
 	unit_test_start();
 
@@ -252,26 +243,30 @@ test_big_messages(void)
 	struct chat_message *msg;
 	int count = 100;
 	int real_count = 0;
-	for (int i = 0; i < count; ++i) {
+	for (int i = 0; i < count; ++i)
+	{
 		unit_fail_if(chat_client_feed(c1,
-			test_msg->data, test_msg->size) != 0);
+									  test_msg->data, test_msg->size) != 0);
 		rc = chat_client_update(c1, 0);
 		unit_fail_if(rc != 0 && rc != CHAT_ERR_TIMEOUT);
 		rc = chat_server_update(s, 0);
 		unit_fail_if(rc != 0 && rc != CHAT_ERR_TIMEOUT);
-		while ((msg = chat_server_pop_next(s)) != NULL) {
+		while ((msg = chat_server_pop_next(s)) != NULL)
+		{
 			++real_count;
 			test_msg_check_data(test_msg, msg->data);
 			unit_fail_if(!author_is_eq(msg, "c1"));
 			chat_message_delete(msg);
 		}
 	}
-	while (true) {
+	while (true)
+	{
 		int rc1 = chat_client_update(c1, 0);
 		unit_fail_if(rc1 != 0 && rc1 != CHAT_ERR_TIMEOUT);
 		int rc2 = chat_server_update(s, 0);
 		unit_fail_if(rc2 != 0 && rc2 != CHAT_ERR_TIMEOUT);
-		while ((msg = chat_server_pop_next(s)) != NULL) {
+		while ((msg = chat_server_pop_next(s)) != NULL)
+		{
 			++real_count;
 			test_msg_check_data(test_msg, msg->data);
 			unit_fail_if(!author_is_eq(msg, "c1"));
@@ -290,8 +285,7 @@ test_big_messages(void)
 	unit_test_finish();
 }
 
-static void
-test_multi_feed(void)
+static void test_multi_feed(void)
 {
 	unit_test_start();
 
@@ -304,7 +298,7 @@ test_multi_feed(void)
 	// there is no '\n' in the end, then data must be accumulated.
 	const char *data = "msg1\nmsg2\nmsg";
 	unit_check(chat_client_feed(c1, data, strlen(data)) == 0,
-		   "feed an incomplete batch");
+			   "feed an incomplete batch");
 	client_consume_events(c1);
 	server_consume_events(s);
 	struct chat_message *msg = chat_server_pop_next(s);
@@ -333,8 +327,7 @@ test_multi_feed(void)
 	unit_test_finish();
 }
 
-static void
-test_multi_client(void)
+static void test_multi_client(void)
 {
 	unit_test_start();
 
@@ -350,12 +343,13 @@ test_multi_client(void)
 
 	unit_msg("Connect clients");
 	struct chat_client **clis = malloc(client_count * sizeof(clis[0]));
-	for (int i = 0; i < client_count; ++i) {
+	for (int i = 0; i < client_count; ++i)
+	{
 		char name[128];
 		sprintf(name, "cli_%d", i);
 		cli = chat_client_new(name);
 		unit_fail_if(chat_client_connect(
-			cli, make_addr_str(port)) != 0);
+						 cli, make_addr_str(port)) != 0);
 		server_consume_events(s);
 		clis[i] = cli;
 	}
@@ -365,18 +359,21 @@ test_multi_client(void)
 	msg = server_pop_next_blocking_from(s, cli);
 	unit_fail_if(strcmp(msg->data, "hello") != 0);
 	chat_message_delete(msg);
-	for (int i = 0; i < client_count - 1; ++i) {
+	for (int i = 0; i < client_count - 1; ++i)
+	{
 		cli = clis[i];
 		msg = client_pop_next_blocking(cli, s);
 		unit_fail_if(strcmp(msg->data, "hello") != 0);
 		chat_message_delete(msg);
 	}
 	unit_msg("Send messages");
-	for (int mi = 0; mi < msg_count; ++mi) {
-		for (int ci = 0; ci < client_count; ++ci) {
+	for (int mi = 0; mi < msg_count; ++mi)
+	{
+		for (int ci = 0; ci < client_count; ++ci)
+		{
 			test_msg_set_id(test_msg, ci, mi);
 			unit_fail_if(chat_client_feed(
-				clis[ci], test_msg->data, test_msg->size) != 0);
+							 clis[ci], test_msg->data, test_msg->size) != 0);
 			chat_client_update(clis[ci], 0);
 		}
 		chat_server_update(s, 0);
@@ -385,7 +382,8 @@ test_multi_client(void)
 	while (true)
 	{
 		bool have_events = false;
-		for (int i = 0; i < client_count; ++i) {
+		for (int i = 0; i < client_count; ++i)
+		{
 			if (chat_client_update(clis[i], 0) == 0)
 				have_events = true;
 		}
@@ -397,7 +395,8 @@ test_multi_client(void)
 	unit_msg("Check all is delivered");
 	test_msg_clear_id(test_msg);
 	int *msg_counts = calloc(client_count, sizeof(msg_counts[0]));
-	for (int i = 0, end = msg_count * client_count; i < end; ++i) {
+	for (int i = 0, end = msg_count * client_count; i < end; ++i)
+	{
 		msg = chat_server_pop_next(s);
 		unit_fail_if(msg == NULL);
 		int cli_id = -1;
@@ -415,12 +414,14 @@ test_multi_client(void)
 
 		chat_message_delete(msg);
 	}
-	for (int ci = 0; ci < client_count; ++ci) {
+	for (int ci = 0; ci < client_count; ++ci)
+	{
 		memset(msg_counts, 0, client_count * sizeof(msg_counts[0]));
 		cli = clis[ci];
 		// -1 because own messages are not delivered to self.
 		int total_msg_count = msg_count * (client_count - 1);
-		for (int mi = 0; mi < total_msg_count; ++mi) {
+		for (int mi = 0; mi < total_msg_count; ++mi)
+		{
 			msg = client_pop_next_blocking(cli, s);
 			int cli_id = -1;
 			int msg_id = -1;
@@ -449,7 +450,8 @@ test_multi_client(void)
 	unit_test_finish();
 }
 
-struct test_stress_ctx {
+struct test_stress_ctx
+{
 	int msg_count;
 	uint32_t msg_len;
 	int thread_idx;
@@ -457,8 +459,7 @@ struct test_stress_ctx {
 	bool is_running;
 };
 
-static void *
-test_stress_worker_f(void *arg)
+static void *test_stress_worker_f(void *arg)
 {
 	struct test_stress_ctx *ctx = arg;
 	int thread_idx = __atomic_fetch_add(
@@ -468,13 +469,15 @@ test_stress_worker_f(void *arg)
 	sprintf(name, "cli_%d", thread_idx);
 	struct chat_client *cli = chat_client_new(name);
 	unit_fail_if(chat_client_connect(cli, make_addr_str(ctx->port)) != 0);
-	for (int i = 0; i < ctx->msg_count; ++i) {
+	for (int i = 0; i < ctx->msg_count; ++i)
+	{
 		test_msg_set_id(test_msg, thread_idx, i);
 		unit_fail_if(chat_client_feed(cli,
-			test_msg->data, test_msg->size) != 0);
+									  test_msg->data, test_msg->size) != 0);
 		chat_client_update(cli, 0);
 	}
-	while (__atomic_load_n(&ctx->is_running, __ATOMIC_RELAXED)) {
+	while (__atomic_load_n(&ctx->is_running, __ATOMIC_RELAXED))
+	{
 		int rc = chat_client_update(cli, 0.1);
 		unit_fail_if(rc != 0 && rc != CHAT_ERR_TIMEOUT);
 	}
@@ -483,8 +486,7 @@ test_stress_worker_f(void *arg)
 	return NULL;
 }
 
-static void
-test_stress(void)
+static void test_stress(void)
 {
 	unit_test_start();
 
@@ -501,17 +503,20 @@ test_stress(void)
 
 	unit_msg("Start client threads");
 	pthread_t threads[client_count];
-	for (int i = 0; i < client_count; ++i) {
+	for (int i = 0; i < client_count; ++i)
+	{
 		int rc = pthread_create(&threads[i], NULL,
-			test_stress_worker_f, &ctx);
+								test_stress_worker_f, &ctx);
 		unit_fail_if(rc != 0);
 	}
 	int *msg_counts = calloc(client_count, sizeof(msg_counts[0]));
 	struct test_msg *test_msg = test_msg_new(ctx.msg_len);
 	unit_msg("Receive all messages");
-	for (int i = 0, end = ctx.msg_count * client_count; i < end; ++i) {
+	for (int i = 0, end = ctx.msg_count * client_count; i < end; ++i)
+	{
 		struct chat_message *msg;
-		while ((msg = chat_server_pop_next(s)) == NULL) {
+		while ((msg = chat_server_pop_next(s)) == NULL)
+		{
 			int rc = chat_server_update(s, 0.1);
 			unit_fail_if(rc != 0 && rc != CHAT_ERR_TIMEOUT);
 		}
@@ -535,7 +540,8 @@ test_stress(void)
 	test_msg_delete(test_msg);
 	unit_msg("Clean up the clients");
 	__atomic_store_n(&ctx.is_running, false, __ATOMIC_RELAXED);
-	for (int i = 0; i < client_count; ++i) {
+	for (int i = 0; i < client_count; ++i)
+	{
 		void *res;
 		int rc = pthread_join(threads[i], &res);
 		unit_fail_if(rc != 0);
@@ -545,8 +551,7 @@ test_stress(void)
 	unit_test_finish();
 }
 
-static void
-test_big_author(void)
+static void test_big_author(void)
 {
 #if NEED_AUTHOR
 	unit_test_start();
@@ -599,8 +604,7 @@ test_big_author(void)
 #endif
 }
 
-static void
-test_server_feed(void)
+static void test_server_feed(void)
 {
 #if NEED_SERVER_FEED
 	unit_test_start();
@@ -644,9 +648,9 @@ test_server_feed(void)
 	chat_message_delete(msg);
 
 	unit_check(chat_client_update(c1, 0) == CHAT_ERR_TIMEOUT,
-		   "no more events in c1");
+			   "no more events in c1");
 	unit_check(chat_client_update(c2, 0) == CHAT_ERR_TIMEOUT,
-		   "no more events in c2");
+			   "no more events in c2");
 
 	// Feed just one byte from the string, yes.
 	unit_check(chat_server_feed(s, "\ntail\n", 1) == 0, "feed server");
@@ -665,9 +669,9 @@ test_server_feed(void)
 	chat_message_delete(msg);
 
 	unit_check(chat_client_update(c1, 0) == CHAT_ERR_TIMEOUT,
-		   "no more events in c1");
+			   "no more events in c1");
 	unit_check(chat_client_update(c2, 0) == CHAT_ERR_TIMEOUT,
-		   "no more events in c2");
+			   "no more events in c2");
 
 	chat_client_delete(c1);
 	chat_client_delete(c2);
@@ -677,10 +681,10 @@ test_server_feed(void)
 #endif
 }
 
-int
-main(int argc, char **argv)
+int main(int argc, char **argv)
 {
-	if (doCmdMaxPoints(argc, argv)) {
+	if (doCmdMaxPoints(argc, argv))
+	{
 		int result = 15;
 #if NEED_AUTHOR
 		result += 5;

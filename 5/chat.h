@@ -16,7 +16,8 @@
 #define NEED_AUTHOR 0
 #define NEED_SERVER_FEED 0
 
-enum chat_errcode {
+enum chat_errcode
+{
 	CHAT_ERR_INVALID_ARGUMENT = 1,
 	CHAT_ERR_TIMEOUT,
 	CHAT_ERR_PORT_BUSY,
@@ -27,12 +28,14 @@ enum chat_errcode {
 	CHAT_ERR_SYS,
 };
 
-enum chat_events {
+enum chat_events
+{
 	CHAT_EVENT_INPUT = 1,
 	CHAT_EVENT_OUTPUT = 2,
 };
 
-struct chat_message {
+struct chat_message
+{
 #if NEED_AUTHOR
 	/** Author's name. */
 	const char *author;
@@ -40,13 +43,11 @@ struct chat_message {
 	/** 0-terminate text. */
 	char *data;
 
-	/* PUT HERE OTHER MEMBERS */
+	struct chat_message *next;
 };
 
 /** Free message's memory. */
-void
-chat_message_delete(struct chat_message *msg);
+void chat_message_delete(struct chat_message *msg);
 
 /** Convert chat_events mask to events suitable for poll(). */
-int
-chat_events_to_poll_events(int mask);
+int chat_events_to_poll_events(int mask);

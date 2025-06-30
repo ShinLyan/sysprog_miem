@@ -6,8 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-static int
-port_from_str(const char *str, uint16_t *port)
+static int port_from_str(const char *str, uint16_t *port)
 {
 	errno = 0;
 	char *end = NULL;
@@ -22,22 +21,24 @@ port_from_str(const char *str, uint16_t *port)
 	return 0;
 }
 
-int
-main(int argc, char **argv)
+int main(int argc, char **argv)
 {
-	if (argc < 2) {
+	if (argc < 2)
+	{
 		printf("Expected a port to listen on\n");
 		return -1;
 	}
 	uint16_t port = 0;
 	int rc = port_from_str(argv[1], &port);
-	if (rc != 0) {
+	if (rc != 0)
+	{
 		printf("Invalid port\n");
 		return -1;
 	}
 	struct chat_server *serv = chat_server_new();
 	rc = chat_server_listen(serv, port);
-	if (rc != 0) {
+	if (rc != 0)
+	{
 		printf("Couldn't listen: %d\n", rc);
 		chat_server_delete(serv);
 		return -1;
@@ -53,15 +54,18 @@ main(int argc, char **argv)
 	 * The basic implementation without server messages. Just serving
 	 * clients.
 	 */
-	while (true) {
+	while (true)
+	{
 		int rc = chat_server_update(serv, -1);
-		if (rc != 0) {
+		if (rc != 0)
+		{
 			printf("Update error: %d\n", rc);
 			break;
 		}
 		/* Flush all the pending messages to the standard output. */
 		struct chat_message *msg;
-		while ((msg = chat_server_pop_next(serv)) != NULL) {
+		while ((msg = chat_server_pop_next(serv)) != NULL)
+		{
 #if NEED_AUTHOR
 			printf("%s: %s\n", msg->author, msg->data);
 #else
